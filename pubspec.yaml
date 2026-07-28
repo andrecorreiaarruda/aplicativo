@@ -1,0 +1,25 @@
+name: servicelog_ai
+description: Plataforma ORION de registro técnico, histórico de falhas e assistência por IA.
+publish_to: none
+version: 0.3.3+11
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  intl: ^0.20.0
+  supabase_flutter: ^2.16.0
+  shared_preferences: ^2.3.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/branding/orion-logo.jpg
+    - assets/branding/orion-icon.png

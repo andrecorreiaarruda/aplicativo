@@ -1,0 +1,16 @@
+ORION ServiceLog AI 0.3.3
+
+Verificações realizadas neste ambiente:
+- estrutura de 29 arquivos Dart;
+- balanceamento de chaves, colchetes, parênteses, strings e comentários;
+- presença dos novos campos activityType e progressEntries em modelos e repositórios;
+- compatibilidade retroativa do armazenamento demo (campos ausentes recebem valores padrão);
+- migration SQL para activity_type e service_progress_entries;
+- integridade das referências do autocomplete de cliente/local;
+- versão do pubspec atualizada para 0.3.3+11.
+
+Limitação:
+- Flutter SDK não está instalado neste ambiente; executar localmente:
+  flutter analyze
+  flutter test
+  flutter run -d linux

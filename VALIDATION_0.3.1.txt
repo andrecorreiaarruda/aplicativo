@@ -1,0 +1,14 @@
+ORION ServiceLog AI 0.3.1 — validação estrutural
+
+Verificações executadas neste ambiente:
+- estrutura de delimitadores dos 29 arquivos Dart;
+- resolução de todos os imports Dart relativos;
+- leitura válida do pubspec.yaml;
+- presença dos ativos ORION;
+- presença das migrations 0004 e 0005;
+- consistência dos métodos da interface ServiceLogRepository com as duas implementações;
+- integridade dos arquivos ZIP após empacotamento.
+
+Limitação:
+- este ambiente não possui Flutter SDK/Dart SDK; portanto flutter analyze,
+  flutter test e compilação devem ser executados na máquina Linux/Windows.
