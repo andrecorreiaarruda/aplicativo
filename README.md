@@ -82,3 +82,4 @@ O cadastro de equipamentos agora usa pesquisa incremental em vez de uma lista su
 - diário cumulativo de andamento, com vários registros no mesmo atendimento;
 - filtro por atividade na listagem de atendimentos;
 - migration `0006_service_activities_and_progress.sql` para Supabase.
+# aplicativo
