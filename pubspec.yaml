@@ -1,7 +1,7 @@
 name: servicelog_ai
 description: Plataforma ORION de registro técnico, histórico de falhas e assistência por IA.
 publish_to: none
-version: 0.4.0-alpha.2+13
+version: 0.4.0-alpha.2+15
 
 environment:
   sdk: ">=3.9.0 <4.0.0"

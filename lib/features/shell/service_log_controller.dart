@@ -59,8 +59,10 @@ class ServiceLogController extends ChangeNotifier {
 
   Future<void> syncNow({bool silent = false}) async {
     if (syncing) return;
-    final syncRepository = repository;
-    if (syncRepository is! SyncAwareRepository) return;
+    final syncRepository = repository is SyncAwareRepository
+        ? repository as SyncAwareRepository
+        : null;
+    if (syncRepository == null) return;
     syncing = true;
     if (!silent) errorMessage = null;
     notifyListeners();
@@ -206,8 +208,10 @@ class ServiceLogController extends ChangeNotifier {
   }
 
   Future<void> _refreshSyncStatus() async {
-    final syncRepository = repository;
-    if (syncRepository is! SyncAwareRepository) {
+    final syncRepository = repository is SyncAwareRepository
+        ? repository as SyncAwareRepository
+        : null;
+    if (syncRepository == null) {
       syncStatus = null;
       return;
     }

@@ -1,21 +1,15 @@
-# Patch 0.4.0-alpha.2 — replay offline
+# Hotfix 0.4.0-alpha.2+15
 
-Este ZIP foi preparado para ser extraído diretamente na raiz do aplicativo Flutter, onde está o `pubspec.yaml`.
+Corrige a resolução estática do contrato `SyncAwareRepository` no
+`ServiceLogController`.
 
-```bash
-cd ~/Projetos/orion-servicelog
-unzip -o ~/Downloads/orion-servicelog-offline-replay-patch-0.4.0-alpha.2.zip -d .
-flutter clean
-rm -rf .dart_tool build
-flutter pub get
-dart run sqflite_common_ffi_web:setup --force
-dart format lib test
-flutter analyze
-flutter test
-```
+O compilador mantinha a variável local com tipo estático
+`ServiceLogRepository` após a checagem `is!`, portanto os métodos
+`syncPendingChanges()` e `fetchSyncStatus()` não eram resolvidos.
 
-A pasta `supabase/` do patch contém apenas a nova migration para ser copiada/aplicada no repositório completo do backend:
+A correção cria explicitamente uma referência tipada como
+`SyncAwareRepository?` antes de chamar os métodos.
 
-```bash
-npx supabase db push
-```
+Arquivos alterados:
+- `lib/features/shell/service_log_controller.dart`
+- `pubspec.yaml`
