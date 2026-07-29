@@ -23,8 +23,10 @@ class DashboardSnapshot {
     required List<ServiceCase> cases,
   }) {
     final resolved = cases.where((item) => item.isResolved).toList();
-    final serviceDurations =
-        resolved.map((item) => item.serviceMinutes).whereType<int>().toList();
+    final serviceDurations = resolved
+        .map((item) => item.serviceMinutes)
+        .whereType<int>()
+        .toList();
     final average = serviceDurations.isEmpty
         ? 0.0
         : serviceDurations.reduce((a, b) => a + b) / serviceDurations.length;
@@ -33,8 +35,9 @@ class DashboardSnapshot {
       totalEquipment: equipment.length,
       openCases: cases.where((item) => !item.isResolved).length,
       resolvedCases: resolved.length,
-      stoppedEquipment:
-          equipment.where((item) => item.status == 'stopped').length,
+      stoppedEquipment: equipment
+          .where((item) => item.status == 'stopped')
+          .length,
       totalDowntimeMinutes: resolved
           .map((item) => item.downtimeMinutes ?? 0)
           .fold(0, (a, b) => a + b),

@@ -39,10 +39,7 @@ class _CustomersPageState extends State<CustomersPage> {
     await showResponsiveDialog<String>(
       context: context,
       maxWidth: 720,
-      child: CustomerForm(
-        controller: widget.controller,
-        customer: customer,
-      ),
+      child: CustomerForm(controller: widget.controller, customer: customer),
     );
   }
 
@@ -67,10 +64,7 @@ class _CustomersPageState extends State<CustomersPage> {
     await showResponsiveDialog<String>(
       context: context,
       maxWidth: 660,
-      child: SiteForm(
-        controller: widget.controller,
-        site: site,
-      ),
+      child: SiteForm(controller: widget.controller, site: site),
     );
   }
 
@@ -170,8 +164,8 @@ class _CustomersPageState extends State<CustomersPage> {
                 final columns = constraints.maxWidth >= 1160
                     ? 3
                     : constraints.maxWidth >= 720
-                        ? 2
-                        : 1;
+                    ? 2
+                    : 1;
                 final width =
                     (constraints.maxWidth - (columns - 1) * 14) / columns;
                 return Wrap(
@@ -246,9 +240,9 @@ class _ServiceOrderFoundationCard extends StatelessWidget {
                     Text(
                       'Base para preenchimento automático da OS',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                            color: OrionColors.navy,
-                          ),
+                        fontWeight: FontWeight.w800,
+                        color: OrionColors.navy,
+                      ),
                     ),
                     const Chip(label: Text('Próxima etapa')),
                   ],
@@ -316,10 +310,7 @@ class _CustomerCard extends StatelessWidget {
       if (customer.email?.isNotEmpty == true)
         _InfoLine(icon: Icons.email_outlined, text: customer.email!),
       if (customer.addressLine?.isNotEmpty == true)
-        _InfoLine(
-          icon: Icons.home_work_outlined,
-          text: customer.addressLine!,
-        ),
+        _InfoLine(icon: Icons.home_work_outlined, text: customer.addressLine!),
       if (customer.locationLabel.isNotEmpty)
         _InfoLine(
           icon: Icons.location_city_outlined,
@@ -381,9 +372,9 @@ class _CustomerCard extends StatelessWidget {
             Text(
               'Locais de instalação',
               style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: OrionColors.navy,
-                  ),
+                fontWeight: FontWeight.w800,
+                color: OrionColors.navy,
+              ),
             ),
             const SizedBox(height: 8),
             if (sites.isEmpty)
@@ -452,9 +443,7 @@ class _InfoLine extends StatelessWidget {
         children: [
           Icon(icon, size: 17, color: OrionColors.muted),
           const SizedBox(width: 8),
-          Expanded(
-            child: Text(text, style: const TextStyle(fontSize: 13)),
-          ),
+          Expanded(child: Text(text, style: const TextStyle(fontSize: 13))),
         ],
       ),
     );

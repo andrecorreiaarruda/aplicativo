@@ -1,25 +1,48 @@
 import 'dart:convert';
 
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
+
+import '../../core/storage/local_snapshot_store.dart';
+import '../../core/storage/memory_snapshot_store.dart';
 
 import '../models/equipment.dart';
 import '../models/service_case.dart';
+import '../sync/sync_operation.dart';
+import '../sync/sync_queue_service.dart';
 import 'service_log_repository.dart';
 
-class DemoServiceLogRepository implements ServiceLogRepository {
+class DemoServiceLogRepository
+    implements ServiceLogRepository, SyncAwareRepository {
   DemoServiceLogRepository._({
     required List<Equipment> equipment,
     required List<ServiceCase> cases,
     required List<EquipmentModelOption> models,
     required List<CustomerOption> customers,
     required List<SiteOption> sites,
-  })  : _equipment = equipment,
-        _cases = cases,
-        _models = models,
-        _customers = customers,
-        _sites = sites;
+    required LocalSnapshotStore storage,
+    required String namespace,
+    required bool isDemo,
+    required bool useUuidIds,
+    SyncQueueService? syncQueue,
+    Uuid? uuid,
+  }) : _storage = storage,
+       _syncQueue = syncQueue,
+       _namespace = namespace,
+       _isDemo = isDemo,
+       _useUuidIds = useUuidIds,
+       _uuid = uuid ?? const Uuid(),
+       _equipment = equipment,
+       _cases = cases,
+       _models = models,
+       _customers = customers,
+       _sites = sites;
 
-  factory DemoServiceLogRepository.seeded() {
+  factory DemoServiceLogRepository.seeded({
+    LocalSnapshotStore? storage,
+    String namespace = 'demo-local',
+    bool journalChanges = false,
+  }) {
+    final resolvedStorage = storage ?? MemorySnapshotStore();
     final models = <EquipmentModelOption>[
       const EquipmentModelOption(
         id: 'model-allura-fd10',
@@ -239,11 +262,41 @@ class DemoServiceLogRepository implements ServiceLogRepository {
       models: models,
       customers: customers,
       sites: sites,
+      storage: resolvedStorage,
+      namespace: namespace,
+      syncQueue: journalChanges
+          ? SyncQueueService(store: resolvedStorage, namespace: namespace)
+          : null,
+      isDemo: true,
+      useUuidIds: false,
     );
   }
 
-  static const _storageKey = 'orion_servicelog_demo_v3';
+  factory DemoServiceLogRepository.offlineMirror({
+    required LocalSnapshotStore storage,
+    required String namespace,
+  }) {
+    return DemoServiceLogRepository._(
+      equipment: <Equipment>[],
+      cases: <ServiceCase>[],
+      models: <EquipmentModelOption>[],
+      customers: <CustomerOption>[],
+      sites: <SiteOption>[],
+      storage: storage,
+      namespace: namespace,
+      syncQueue: SyncQueueService(store: storage, namespace: namespace),
+      isDemo: false,
+      useUuidIds: true,
+    );
+  }
 
+  final LocalSnapshotStore _storage;
+  final SyncQueueService? _syncQueue;
+  final String _namespace;
+  final bool _isDemo;
+  final bool _useUuidIds;
+  final Uuid _uuid;
+  final Map<String, int> _remoteRevisions = <String, int>{};
   final List<Equipment> _equipment;
   final List<ServiceCase> _cases;
   final List<EquipmentModelOption> _models;
@@ -255,7 +308,7 @@ class DemoServiceLogRepository implements ServiceLogRepository {
   int _catalogSequence = 100;
 
   @override
-  bool get isDemo => true;
+  bool get isDemo => _isDemo;
 
   @override
   Future<List<Equipment>> fetchEquipments() async {
@@ -308,6 +361,18 @@ class DemoServiceLogRepository implements ServiceLogRepository {
       ),
     );
     await _persist();
+    await _journal(
+      entityType: 'equipment_model',
+      entityId: id,
+      payload: {
+        'id': id,
+        'manufacturer': manufacturer,
+        'family': draft.family?.trim(),
+        'model': modelName,
+        'modality': _fallback(draft.modality, 'Não informada'),
+        'description': _blankToNull(draft.description),
+      },
+    );
     return id;
   }
 
@@ -337,6 +402,11 @@ class DemoServiceLogRepository implements ServiceLogRepository {
       ),
     );
     await _persist();
+    await _journal(
+      entityType: 'customer',
+      entityId: id,
+      payload: _customerDraftPayload(id, draft),
+    );
     return id;
   }
 
@@ -404,6 +474,11 @@ class DemoServiceLogRepository implements ServiceLogRepository {
     }
 
     await _persist();
+    await _journal(
+      entityType: 'customer',
+      entityId: id,
+      payload: _customerDraftPayload(id, draft),
+    );
   }
 
   @override
@@ -434,6 +509,11 @@ class DemoServiceLogRepository implements ServiceLogRepository {
       ),
     );
     await _persist();
+    await _journal(
+      entityType: 'site',
+      entityId: id,
+      payload: _siteDraftPayload(id, draft),
+    );
     return id;
   }
 
@@ -489,6 +569,11 @@ class DemoServiceLogRepository implements ServiceLogRepository {
     }
 
     await _persist();
+    await _journal(
+      entityType: 'site',
+      entityId: id,
+      payload: _siteDraftPayload(id, draft),
+    );
   }
 
   @override
@@ -524,9 +609,10 @@ class DemoServiceLogRepository implements ServiceLogRepository {
     final model = _models.firstWhere((item) => item.id == draft.modelId);
     final matchingSites = _sites.where((item) => item.id == draft.siteId);
     final site = matchingSites.isEmpty ? null : matchingSites.first;
+    final id = _nextId('eq');
     _equipment.add(
       Equipment(
-        id: _nextId('eq'),
+        id: id,
         modelId: model.id,
         manufacturer: model.manufacturer,
         family: model.family,
@@ -544,14 +630,29 @@ class DemoServiceLogRepository implements ServiceLogRepository {
     );
     _equipmentSequence++;
     await _persist();
+    await _journal(
+      entityType: 'equipment',
+      entityId: id,
+      payload: {
+        'id': id,
+        'equipment_model_id': draft.modelId,
+        'site_id': draft.siteId,
+        'serial_number': draft.serialNumber.trim(),
+        'software_version': _blankToNull(draft.softwareVersion),
+        'hardware_version': _blankToNull(draft.hardwareVersion),
+        'status': draft.status,
+        'notes': _blankToNull(draft.notes),
+      },
+    );
   }
 
   @override
   Future<void> saveCase(ServiceCaseDraft draft) async {
     await _ensureHydrated();
     await _latency();
-    final equipment =
-        _equipment.firstWhere((item) => item.id == draft.equipmentId);
+    final equipment = _equipment.firstWhere(
+      (item) => item.id == draft.equipmentId,
+    );
     final existingIndex = draft.id == null
         ? -1
         : _cases.indexWhere((item) => item.id == draft.id);
@@ -593,6 +694,11 @@ class DemoServiceLogRepository implements ServiceLogRepository {
       _cases.add(item);
     }
     await _persist();
+    await _journal(
+      entityType: 'service_case',
+      entityId: item.id,
+      payload: _caseSyncPayload(item),
+    );
   }
 
   @override
@@ -607,18 +713,22 @@ class DemoServiceLogRepository implements ServiceLogRepository {
 
     final results = <SimilarCaseResult>[];
     for (final serviceCase in _cases.where((item) => item.isResolved)) {
-      final caseTokens = _tokens([
-        serviceCase.reportedFailure,
-        serviceCase.observedSymptoms,
-        serviceCase.errorCode,
-        serviceCase.errorMessage,
-        serviceCase.subsystem,
-        serviceCase.measurements,
-        serviceCase.rootCause,
-        serviceCase.solutionDetails,
-        serviceCase.validationResult,
-        serviceCase.progressEntries.map((entry) => entry.description).join(' '),
-      ].whereType<String>().join(' '));
+      final caseTokens = _tokens(
+        [
+          serviceCase.reportedFailure,
+          serviceCase.observedSymptoms,
+          serviceCase.errorCode,
+          serviceCase.errorMessage,
+          serviceCase.subsystem,
+          serviceCase.measurements,
+          serviceCase.rootCause,
+          serviceCase.solutionDetails,
+          serviceCase.validationResult,
+          serviceCase.progressEntries
+              .map((entry) => entry.description)
+              .join(' '),
+        ].whereType<String>().join(' '),
+      );
 
       final intersection = queryTokens.intersection(caseTokens).length;
       final union = queryTokens.union(caseTokens).length;
@@ -642,8 +752,11 @@ class DemoServiceLogRepository implements ServiceLogRepository {
         score += 0.10;
         reasons.add('Mesmo subsistema');
       }
-      if ({'confirmed', 'recurring', 'reviewed'}
-          .contains(serviceCase.solutionConfidence)) {
+      if ({
+        'confirmed',
+        'recurring',
+        'reviewed',
+      }.contains(serviceCase.solutionConfidence)) {
         score += 0.05;
         reasons.add('Solução validada');
       }
@@ -670,13 +783,166 @@ class DemoServiceLogRepository implements ServiceLogRepository {
   @override
   Future<void> signOut() async {}
 
+  @override
+  Future<SyncStatusSnapshot> fetchSyncStatus() async {
+    final pendingOperations = _syncQueue == null
+        ? const <SyncOperation>[]
+        : await _syncQueue.pending();
+    final lastSync = await _storage.readMetadata(
+      _namespace,
+      'last_successful_sync',
+    );
+    final lastError = await _storage.readMetadata(
+      _namespace,
+      'last_sync_error',
+    );
+    return SyncStatusSnapshot(
+      pendingCount: pendingOperations.length,
+      conflictCount: pendingOperations
+          .where((item) => item.lastError?.startsWith('CONFLICT:') == true)
+          .length,
+      storageLabel: _storage.storageLabel,
+      lastSuccessfulSync: lastSync == null ? null : DateTime.tryParse(lastSync),
+      lastError: lastError,
+    );
+  }
+
+  @override
+  Future<void> syncPendingChanges() async {
+    // O replay remoto será ativado no próximo marco da versão 0.4.
+  }
+
+  Future<void> _journal({
+    required String entityType,
+    required String entityId,
+    required Map<String, dynamic> payload,
+  }) async {
+    final queue = _syncQueue;
+    if (queue == null) return;
+    await queue.enqueue(
+      entityType: entityType,
+      entityId: entityId,
+      operation: 'upsert',
+      payload: <String, dynamic>{
+        ...payload,
+        '_base_revision': remoteRevision(entityType, entityId),
+        '_client_updated_at': DateTime.now().toUtc().toIso8601String(),
+      },
+    );
+  }
+
+  static Map<String, dynamic> _customerDraftPayload(
+    String id,
+    CustomerDraft draft,
+  ) => {
+    'id': id,
+    'name': draft.name.trim(),
+    'tax_id': _blankToNull(draft.taxId),
+    'contact_name': _blankToNull(draft.contactName),
+    'email': _blankToNull(draft.email),
+    'phone': _blankToNull(draft.phone),
+    'address_line': _blankToNull(draft.addressLine),
+    'city': _blankToNull(draft.city),
+    'state': _blankToNull(draft.state),
+    'notes': _blankToNull(draft.notes),
+  };
+
+  static Map<String, dynamic> _siteDraftPayload(String id, SiteDraft draft) => {
+    'id': id,
+    'customer_id': draft.customerId,
+    'name': draft.siteName.trim(),
+    'city': _blankToNull(draft.city),
+    'state': _blankToNull(draft.state),
+    'notes': _blankToNull(draft.notes),
+  };
+
+  int remoteRevision(String entityType, String entityId) =>
+      _remoteRevisions['$entityType:$entityId'] ?? 0;
+
+  Future<void> updateRemoteRevision(
+    String entityType,
+    String entityId,
+    int revision,
+  ) async {
+    await _ensureHydrated();
+    _remoteRevisions['$entityType:$entityId'] = revision;
+    await _persist();
+  }
+
+  Future<void> replaceFromRemote({
+    required List<Equipment> equipment,
+    required List<ServiceCase> cases,
+    required EquipmentCatalog catalog,
+    required Map<String, int> revisions,
+  }) async {
+    await _ensureHydrated();
+    _models
+      ..clear()
+      ..addAll(catalog.models);
+    _customers
+      ..clear()
+      ..addAll(catalog.customers);
+    _sites
+      ..clear()
+      ..addAll(catalog.sites);
+    _equipment
+      ..clear()
+      ..addAll(equipment);
+    _cases
+      ..clear()
+      ..addAll(cases);
+    _remoteRevisions
+      ..clear()
+      ..addAll(revisions);
+    final greatestCaseNumber = _cases.fold<int>(
+      0,
+      (current, item) => item.caseNumber > current ? item.caseNumber : current,
+    );
+    _caseSequence = greatestCaseNumber + 1;
+    await _persist();
+  }
+
+  static Map<String, dynamic> _caseSyncPayload(ServiceCase item) => {
+    'id': item.id,
+    'equipment_id': item.equipmentId,
+    'status': item.status,
+    'activity_type': item.activityType,
+    'opened_at': item.openedAt.toUtc().toIso8601String(),
+    'closed_at': item.closedAt?.toUtc().toIso8601String(),
+    'reported_failure': item.reportedFailure,
+    'observed_symptoms': item.observedSymptoms,
+    'error_code': item.errorCode,
+    'error_message': item.errorMessage,
+    'subsystem': item.subsystem,
+    'operational_impact': item.operationalImpact,
+    'measurements': item.measurements,
+    'root_cause': item.rootCause,
+    'solution_details': item.solutionDetails,
+    'validation_result': item.validationResult,
+    'final_equipment_status': item.finalEquipmentStatus,
+    'solution_confidence': item.solutionConfidence,
+    'downtime_minutes': item.downtimeMinutes,
+    'service_minutes': item.serviceMinutes,
+    'requires_follow_up': item.requiresFollowUp,
+    'follow_up_notes': item.followUpNotes,
+    'safety_notes': item.safetyNotes,
+    'progress_entries': item.progressEntries
+        .map(
+          (entry) => {
+            'id': entry.id,
+            'occurred_at': entry.occurredAt.toUtc().toIso8601String(),
+            'description': entry.description,
+          },
+        )
+        .toList(growable: false),
+  };
+
   Future<void> _ensureHydrated() {
     return _hydrationFuture ??= _hydrate();
   }
 
   Future<void> _hydrate() async {
-    final preferences = await SharedPreferences.getInstance();
-    final stored = preferences.getString(_storageKey);
+    final stored = await _storage.readSnapshot(_namespace);
     if (stored == null || stored.isEmpty) {
       await _persist();
       return;
@@ -754,22 +1020,26 @@ class DemoServiceLogRepository implements ServiceLogRepository {
         );
       _cases
         ..clear()
-        ..addAll(
-          _list(root['cases']).map(_caseFromJson),
-        );
+        ..addAll(_list(root['cases']).map(_caseFromJson));
       _equipmentSequence = (root['equipmentSequence'] as num?)?.toInt() ?? 10;
       _caseSequence = (root['caseSequence'] as num?)?.toInt() ?? 105;
       _catalogSequence = (root['catalogSequence'] as num?)?.toInt() ?? 100;
+      _remoteRevisions
+        ..clear()
+        ..addAll(
+          Map<String, dynamic>.from(
+            root['remoteRevisions'] as Map? ?? const <String, dynamic>{},
+          ).map((key, value) => MapEntry(key, (value as num?)?.toInt() ?? 0)),
+        );
     } catch (_) {
-      await preferences.remove(_storageKey);
+      await _storage.removeSnapshot(_namespace);
       await _persist();
     }
   }
 
   Future<void> _persist() async {
-    final preferences = await SharedPreferences.getInstance();
-    await preferences.setString(
-      _storageKey,
+    await _storage.writeSnapshot(
+      _namespace,
       jsonEncode({
         'models': _models
             .map(
@@ -835,94 +1105,94 @@ class DemoServiceLogRepository implements ServiceLogRepository {
         'equipmentSequence': _equipmentSequence,
         'caseSequence': _caseSequence,
         'catalogSequence': _catalogSequence,
+        'remoteRevisions': _remoteRevisions,
       }),
     );
   }
 
   String _nextId(String prefix) {
+    if (_useUuidIds) return _uuid.v4();
     final value = DateTime.now().microsecondsSinceEpoch;
     return '$prefix-demo-$value-${_catalogSequence++}';
   }
 
   static Map<String, dynamic> _caseToJson(ServiceCase item) => {
-        'id': item.id,
-        'caseNumber': item.caseNumber,
-        'equipmentId': item.equipmentId,
-        'equipmentLabel': item.equipmentLabel,
-        'status': item.status,
-        'activityType': item.activityType,
-        'progressEntries': item.progressEntries
-            .map(
-              (entry) => {
-                'id': entry.id,
-                'occurredAt': entry.occurredAt.toIso8601String(),
-                'description': entry.description,
-              },
-            )
-            .toList(),
-        'openedAt': item.openedAt.toIso8601String(),
-        'closedAt': item.closedAt?.toIso8601String(),
-        'reportedFailure': item.reportedFailure,
-        'operationalImpact': item.operationalImpact,
-        'solutionConfidence': item.solutionConfidence,
-        'observedSymptoms': item.observedSymptoms,
-        'errorCode': item.errorCode,
-        'errorMessage': item.errorMessage,
-        'subsystem': item.subsystem,
-        'measurements': item.measurements,
-        'rootCause': item.rootCause,
-        'solutionDetails': item.solutionDetails,
-        'validationResult': item.validationResult,
-        'finalEquipmentStatus': item.finalEquipmentStatus,
-        'downtimeMinutes': item.downtimeMinutes,
-        'serviceMinutes': item.serviceMinutes,
-        'requiresFollowUp': item.requiresFollowUp,
-        'followUpNotes': item.followUpNotes,
-        'safetyNotes': item.safetyNotes,
-      };
+    'id': item.id,
+    'caseNumber': item.caseNumber,
+    'equipmentId': item.equipmentId,
+    'equipmentLabel': item.equipmentLabel,
+    'status': item.status,
+    'activityType': item.activityType,
+    'progressEntries': item.progressEntries
+        .map(
+          (entry) => {
+            'id': entry.id,
+            'occurredAt': entry.occurredAt.toIso8601String(),
+            'description': entry.description,
+          },
+        )
+        .toList(),
+    'openedAt': item.openedAt.toIso8601String(),
+    'closedAt': item.closedAt?.toIso8601String(),
+    'reportedFailure': item.reportedFailure,
+    'operationalImpact': item.operationalImpact,
+    'solutionConfidence': item.solutionConfidence,
+    'observedSymptoms': item.observedSymptoms,
+    'errorCode': item.errorCode,
+    'errorMessage': item.errorMessage,
+    'subsystem': item.subsystem,
+    'measurements': item.measurements,
+    'rootCause': item.rootCause,
+    'solutionDetails': item.solutionDetails,
+    'validationResult': item.validationResult,
+    'finalEquipmentStatus': item.finalEquipmentStatus,
+    'downtimeMinutes': item.downtimeMinutes,
+    'serviceMinutes': item.serviceMinutes,
+    'requiresFollowUp': item.requiresFollowUp,
+    'followUpNotes': item.followUpNotes,
+    'safetyNotes': item.safetyNotes,
+  };
 
   static ServiceCase _caseFromJson(Map<String, dynamic> item) => ServiceCase(
-        id: item['id'] as String,
-        caseNumber: (item['caseNumber'] as num?)?.toInt() ?? 0,
-        equipmentId: item['equipmentId'] as String? ?? '',
-        equipmentLabel: item['equipmentLabel'] as String? ?? '',
-        status: item['status'] as String? ?? 'open',
-        activityType:
-            item['activityType'] as String? ?? ServiceActivityType.maintenance,
-        progressEntries: _list(item['progressEntries'])
-            .map(
-              (entry) => ServiceProgressEntry(
-                id: entry['id'] as String? ?? '',
-                occurredAt: DateTime.tryParse(
-                      entry['occurredAt'] as String? ?? '',
-                    ) ??
-                    DateTime.now(),
-                description: entry['description'] as String? ?? '',
-              ),
-            )
-            .toList(),
-        openedAt: DateTime.tryParse(item['openedAt'] as String? ?? '') ??
-            DateTime.now(),
-        closedAt: DateTime.tryParse(item['closedAt'] as String? ?? ''),
-        reportedFailure: item['reportedFailure'] as String? ?? '',
-        operationalImpact: item['operationalImpact'] as String? ?? 'degraded',
-        solutionConfidence:
-            item['solutionConfidence'] as String? ?? 'unconfirmed',
-        observedSymptoms: item['observedSymptoms'] as String?,
-        errorCode: item['errorCode'] as String?,
-        errorMessage: item['errorMessage'] as String?,
-        subsystem: item['subsystem'] as String?,
-        measurements: item['measurements'] as String?,
-        rootCause: item['rootCause'] as String?,
-        solutionDetails: item['solutionDetails'] as String?,
-        validationResult: item['validationResult'] as String?,
-        finalEquipmentStatus: item['finalEquipmentStatus'] as String?,
-        downtimeMinutes: (item['downtimeMinutes'] as num?)?.toInt(),
-        serviceMinutes: (item['serviceMinutes'] as num?)?.toInt(),
-        requiresFollowUp: item['requiresFollowUp'] as bool? ?? false,
-        followUpNotes: item['followUpNotes'] as String?,
-        safetyNotes: item['safetyNotes'] as String?,
-      );
+    id: item['id'] as String,
+    caseNumber: (item['caseNumber'] as num?)?.toInt() ?? 0,
+    equipmentId: item['equipmentId'] as String? ?? '',
+    equipmentLabel: item['equipmentLabel'] as String? ?? '',
+    status: item['status'] as String? ?? 'open',
+    activityType:
+        item['activityType'] as String? ?? ServiceActivityType.maintenance,
+    progressEntries: _list(item['progressEntries'])
+        .map(
+          (entry) => ServiceProgressEntry(
+            id: entry['id'] as String? ?? '',
+            occurredAt:
+                DateTime.tryParse(entry['occurredAt'] as String? ?? '') ??
+                DateTime.now(),
+            description: entry['description'] as String? ?? '',
+          ),
+        )
+        .toList(),
+    openedAt:
+        DateTime.tryParse(item['openedAt'] as String? ?? '') ?? DateTime.now(),
+    closedAt: DateTime.tryParse(item['closedAt'] as String? ?? ''),
+    reportedFailure: item['reportedFailure'] as String? ?? '',
+    operationalImpact: item['operationalImpact'] as String? ?? 'degraded',
+    solutionConfidence: item['solutionConfidence'] as String? ?? 'unconfirmed',
+    observedSymptoms: item['observedSymptoms'] as String?,
+    errorCode: item['errorCode'] as String?,
+    errorMessage: item['errorMessage'] as String?,
+    subsystem: item['subsystem'] as String?,
+    measurements: item['measurements'] as String?,
+    rootCause: item['rootCause'] as String?,
+    solutionDetails: item['solutionDetails'] as String?,
+    validationResult: item['validationResult'] as String?,
+    finalEquipmentStatus: item['finalEquipmentStatus'] as String?,
+    downtimeMinutes: (item['downtimeMinutes'] as num?)?.toInt(),
+    serviceMinutes: (item['serviceMinutes'] as num?)?.toInt(),
+    requiresFollowUp: item['requiresFollowUp'] as bool? ?? false,
+    followUpNotes: item['followUpNotes'] as String?,
+    safetyNotes: item['safetyNotes'] as String?,
+  );
 
   static List<Map<String, dynamic>> _list(dynamic value) {
     if (value is! List) return const [];

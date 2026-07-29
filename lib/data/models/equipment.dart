@@ -159,10 +159,10 @@ class CustomerOption {
   final String? state;
   final String? notes;
 
-  String get locationLabel => [city, state]
-      .whereType<String>()
-      .where((value) => value.trim().isNotEmpty)
-      .join(' / ');
+  String get locationLabel => [
+    city,
+    state,
+  ].whereType<String>().where((value) => value.trim().isNotEmpty).join(' / ');
 }
 
 class SiteOption {
@@ -185,10 +185,10 @@ class SiteOption {
   final String? notes;
 
   String get label => '$customer — $site';
-  String get locationLabel => [city, state]
-      .whereType<String>()
-      .where((value) => value.trim().isNotEmpty)
-      .join(' / ');
+  String get locationLabel => [
+    city,
+    state,
+  ].whereType<String>().where((value) => value.trim().isNotEmpty).join(' / ');
 }
 
 class EquipmentCatalog {

@@ -78,17 +78,14 @@ class _OrganizationSetupScreenState extends State<OrganizationSetupScreen> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         const Align(
-                            alignment: Alignment.centerLeft,
-                            child: OrionBrand()),
+                          alignment: Alignment.centerLeft,
+                          child: OrionBrand(),
+                        ),
                         const SizedBox(height: 28),
                         Text(
                           'Configurar ambiente',
-                          style: Theme.of(context)
-                              .textTheme
-                              .headlineSmall
-                              ?.copyWith(
-                                fontWeight: FontWeight.w800,
-                              ),
+                          style: Theme.of(context).textTheme.headlineSmall
+                              ?.copyWith(fontWeight: FontWeight.w800),
                         ),
                         const SizedBox(height: 8),
                         const Text(
@@ -98,14 +95,16 @@ class _OrganizationSetupScreenState extends State<OrganizationSetupScreen> {
                         TextFormField(
                           controller: _fullName,
                           decoration: const InputDecoration(
-                              labelText: 'Seu nome completo'),
+                            labelText: 'Seu nome completo',
+                          ),
                           validator: _required,
                         ),
                         const SizedBox(height: 14),
                         TextFormField(
                           controller: _name,
                           decoration: const InputDecoration(
-                              labelText: 'Nome da empresa'),
+                            labelText: 'Nome da empresa',
+                          ),
                           onChanged: (value) {
                             if (_slug.text == 'orion' || _slug.text.isEmpty) {
                               _slug.text = _slugify(value);
@@ -131,9 +130,12 @@ class _OrganizationSetupScreenState extends State<OrganizationSetupScreen> {
                         ),
                         if (_error != null) ...[
                           const SizedBox(height: 14),
-                          Text(_error!,
-                              style: TextStyle(
-                                  color: Theme.of(context).colorScheme.error)),
+                          Text(
+                            _error!,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.error,
+                            ),
+                          ),
                         ],
                         const SizedBox(height: 24),
                         FilledButton.icon(
@@ -141,8 +143,9 @@ class _OrganizationSetupScreenState extends State<OrganizationSetupScreen> {
                           icon: _loading
                               ? const SizedBox.square(
                                   dimension: 18,
-                                  child:
-                                      CircularProgressIndicator(strokeWidth: 2),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
                                 )
                               : const Icon(Icons.apartment_rounded),
                           label: const Text('Criar ambiente ORION'),

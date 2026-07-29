@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/theme/orion_theme.dart';
@@ -27,18 +29,23 @@ class ServiceLogWorkspace extends StatefulWidget {
     super.key,
     required this.repository,
     required this.profile,
+    required this.storageLabel,
     this.demoMode = false,
+    this.startupWarning,
   });
 
   final ServiceLogRepository repository;
   final WorkspaceProfile profile;
+  final String storageLabel;
   final bool demoMode;
+  final String? startupWarning;
 
   @override
   State<ServiceLogWorkspace> createState() => _ServiceLogWorkspaceState();
 }
 
-class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace> {
+class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace>
+    with WidgetsBindingObserver {
   late final ServiceLogController _controller;
   late final Future<void> _initialLoad;
   int _selectedIndex = 0;
@@ -74,6 +81,7 @@ class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _controller = ServiceLogController(widget.repository);
 
     // A carga começa no initState, antes de o AnimatedBuilder registrar seu
@@ -84,8 +92,16 @@ class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _controller.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && !widget.demoMode) {
+      unawaited(_controller.syncNow(silent: true));
+    }
   }
 
   Widget _selectedPage() {
@@ -123,6 +139,101 @@ class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace> {
     }
   }
 
+  String _storageStatusLabel() {
+    if (_controller.syncing) return 'Sincronizando…';
+    final status = _controller.syncStatus;
+    final conflicts = status?.conflictCount ?? 0;
+    if (conflicts > 0) {
+      return '$conflicts conflito${conflicts == 1 ? '' : 's'}';
+    }
+    final pending = status?.pendingCount ?? 0;
+    if (pending > 0) return '$pending pendente${pending == 1 ? '' : 's'}';
+    return widget.demoMode ? widget.storageLabel : 'Sincronizado';
+  }
+
+  Future<void> _showStorageDetails() async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.storage_rounded),
+            SizedBox(width: 10),
+            Text('Armazenamento e sincronização'),
+          ],
+        ),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                widget.storageLabel,
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _controller.syncStatus?.pendingCount == null
+                    ? 'Fila local ainda não inicializada.'
+                    : '${_controller.syncStatus!.pendingCount} alteração(ões) '
+                          'aguardando sincronização.',
+              ),
+              const SizedBox(height: 10),
+              Text(
+                widget.demoMode
+                    ? 'Os cadastros desta versão são gravados no SQLite local. '
+                          'O modo demonstração não envia dados a um servidor.'
+                    : 'O aplicativo grava primeiro no SQLite e sincroniza com '
+                          'o Supabase quando existe conexão. Você pode continuar '
+                          'trabalhando offline; alterações pendentes permanecem '
+                          'na fila até o próximo envio bem-sucedido.',
+              ),
+              if (_controller.syncStatus?.lastSuccessfulSync != null) ...[
+                const SizedBox(height: 10),
+                Text(
+                  'Última sincronização: '
+                  '${_controller.syncStatus!.lastSuccessfulSync!.toLocal()}',
+                ),
+              ],
+              if (_controller.syncStatus?.lastError != null) ...[
+                const SizedBox(height: 10),
+                Text(
+                  'Último erro: ${_controller.syncStatus!.lastError}',
+                  style: const TextStyle(color: OrionColors.danger),
+                ),
+              ],
+              if (widget.startupWarning != null) ...[
+                const SizedBox(height: 14),
+                Text(
+                  widget.startupWarning!,
+                  style: const TextStyle(color: OrionColors.danger),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          if (!widget.demoMode)
+            FilledButton.icon(
+              onPressed: _controller.syncing
+                  ? null
+                  : () async {
+                      await _controller.syncNow();
+                      if (context.mounted) Navigator.of(context).pop();
+                    },
+              icon: const Icon(Icons.sync_rounded),
+              label: const Text('Sincronizar agora'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Fechar'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -133,6 +244,8 @@ class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace> {
             final rail = constraints.maxWidth >= 860;
             final extended = constraints.maxWidth >= 1220;
             final narrowPhone = constraints.maxWidth < 470;
+            final showDemoChip = constraints.maxWidth >= 680;
+            final showStorageChip = constraints.maxWidth >= 760;
 
             return Scaffold(
               appBar: AppBar(
@@ -140,8 +253,8 @@ class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace> {
                 leadingWidth: rail
                     ? (extended ? 246 : 86)
                     : narrowPhone
-                        ? 66
-                        : 190,
+                    ? 66
+                    : 190,
                 leading: Padding(
                   padding: EdgeInsets.only(left: rail ? 18 : 12),
                   child: Align(
@@ -160,7 +273,7 @@ class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace> {
                       )
                     : null,
                 actions: [
-                  if (widget.demoMode && !narrowPhone)
+                  if (widget.demoMode && showDemoChip)
                     Container(
                       margin: const EdgeInsets.symmetric(
                         vertical: 17,
@@ -181,10 +294,32 @@ class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace> {
                         ),
                       ),
                     ),
+                  if (showStorageChip)
+                    ActionChip(
+                      avatar: const Icon(Icons.storage_rounded, size: 18),
+                      label: Text(_storageStatusLabel()),
+                      onPressed: _showStorageDetails,
+                    )
+                  else
+                    IconButton(
+                      tooltip: 'Armazenamento e sincronização',
+                      onPressed: _showStorageDetails,
+                      icon: const Icon(Icons.storage_rounded),
+                    ),
                   IconButton(
-                    tooltip: 'Atualizar dados',
-                    onPressed: _controller.loading ? null : _controller.load,
-                    icon: const Icon(Icons.refresh_rounded),
+                    tooltip: widget.demoMode
+                        ? 'Atualizar dados locais'
+                        : 'Sincronizar dados',
+                    onPressed: _controller.loading || _controller.syncing
+                        ? null
+                        : widget.demoMode
+                        ? _controller.load
+                        : () => _controller.syncNow(),
+                    icon: Icon(
+                      widget.demoMode
+                          ? Icons.refresh_rounded
+                          : Icons.sync_rounded,
+                    ),
                   ),
                   PopupMenuButton<String>(
                     tooltip: 'Conta',
@@ -232,7 +367,7 @@ class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace> {
                   ),
                   const SizedBox(width: 10),
                 ],
-                bottom: _controller.loading
+                bottom: _controller.loading || _controller.syncing
                     ? const PreferredSize(
                         preferredSize: Size.fromHeight(3),
                         child: LinearProgressIndicator(minHeight: 3),
@@ -264,6 +399,7 @@ class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace> {
                       controller: _controller,
                       initialLoad: _initialLoad,
                       selectedPage: _selectedPage(),
+                      startupWarning: widget.startupWarning,
                     ),
                   ),
                 ],
@@ -309,15 +445,18 @@ class _WorkspaceContent extends StatelessWidget {
     required this.controller,
     required this.initialLoad,
     required this.selectedPage,
+    this.startupWarning,
   });
 
   final ServiceLogController controller;
   final Future<void> initialLoad;
   final Widget selectedPage;
+  final String? startupWarning;
 
   @override
   Widget build(BuildContext context) {
-    final firstLoad = controller.loading &&
+    final firstLoad =
+        controller.loading &&
         controller.equipment.isEmpty &&
         controller.cases.isEmpty;
 
@@ -331,7 +470,7 @@ class _WorkspaceContent extends StatelessWidget {
               children: [
                 CircularProgressIndicator(),
                 SizedBox(height: 16),
-                Text('Carregando dados demonstrativos…'),
+                Text('Carregando dados…'),
               ],
             ),
           );
@@ -341,6 +480,24 @@ class _WorkspaceContent extends StatelessWidget {
 
     return Column(
       children: [
+        if (startupWarning != null)
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF6E5),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE9A23B)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.warning_amber_rounded),
+                const SizedBox(width: 10),
+                Expanded(child: Text(startupWarning!)),
+              ],
+            ),
+          ),
         if (controller.errorMessage != null)
           Container(
             width: double.infinity,
@@ -379,8 +536,11 @@ class _WorkspaceContent extends StatelessWidget {
 }
 
 class _Destination {
-  const _Destination(
-      {required this.label, required this.icon, required this.selectedIcon});
+  const _Destination({
+    required this.label,
+    required this.icon,
+    required this.selectedIcon,
+  });
   final String label;
   final IconData icon;
   final IconData selectedIcon;

@@ -137,19 +137,15 @@ class _BrandPanel extends StatelessWidget {
         Text(
           'Conhecimento técnico que permanece com a equipe.',
           style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.w800,
-                height: 1.12,
-              ),
+            color: Colors.white,
+            fontWeight: FontWeight.w800,
+            height: 1.12,
+          ),
         ),
         const SizedBox(height: 20),
         const Text(
           'Registre falhas, organize diagnósticos e recupere soluções anteriores com rastreabilidade.',
-          style: TextStyle(
-            color: Color(0xFFD7E2F7),
-            fontSize: 18,
-            height: 1.5,
-          ),
+          style: TextStyle(color: Color(0xFFD7E2F7), fontSize: 18, height: 1.5),
         ),
         const SizedBox(height: 34),
         const Wrap(
@@ -157,10 +153,14 @@ class _BrandPanel extends StatelessWidget {
           runSpacing: 12,
           children: [
             _FeatureTag(
-                icon: Icons.history_rounded, label: 'Histórico técnico'),
+              icon: Icons.history_rounded,
+              label: 'Histórico técnico',
+            ),
             _FeatureTag(icon: Icons.security_rounded, label: 'Dados isolados'),
             _FeatureTag(
-                icon: Icons.auto_awesome_rounded, label: 'Busca assistida'),
+              icon: Icons.auto_awesome_rounded,
+              label: 'Busca assistida',
+            ),
           ],
         ),
         const Spacer(),
@@ -235,9 +235,9 @@ class _LoginForm extends StatelessWidget {
           const SizedBox(height: 38),
           Text(
             createAccount ? 'Criar acesso' : 'Acessar o sistema',
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 8),
           Text(
@@ -245,7 +245,8 @@ class _LoginForm extends StatelessWidget {
                 ? 'Após o cadastro, configure o ambiente da sua empresa.'
                 : 'Entre com sua conta profissional.',
             style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurfaceVariant),
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 24),
           SegmentedButton<bool>(
@@ -254,8 +255,9 @@ class _LoginForm extends StatelessWidget {
               ButtonSegment(value: true, label: Text('Criar conta')),
             ],
             selected: {createAccount},
-            onSelectionChanged:
-                loading ? null : (values) => onModeChanged(values.first),
+            onSelectionChanged: loading
+                ? null
+                : (values) => onModeChanged(values.first),
           ),
           const SizedBox(height: 22),
           TextFormField(
@@ -285,9 +287,11 @@ class _LoginForm extends StatelessWidget {
               prefixIcon: const Icon(Icons.lock_outline_rounded),
               suffixIcon: IconButton(
                 onPressed: onToggleObscure,
-                icon: Icon(obscure
-                    ? Icons.visibility_rounded
-                    : Icons.visibility_off_rounded),
+                icon: Icon(
+                  obscure
+                      ? Icons.visibility_rounded
+                      : Icons.visibility_off_rounded,
+                ),
               ),
             ),
             validator: (value) {
@@ -316,9 +320,11 @@ class _LoginForm extends StatelessWidget {
                     dimension: 18,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : Icon(createAccount
-                    ? Icons.person_add_alt_1_rounded
-                    : Icons.login_rounded),
+                : Icon(
+                    createAccount
+                        ? Icons.person_add_alt_1_rounded
+                        : Icons.login_rounded,
+                  ),
             label: Text(createAccount ? 'Criar conta' : 'Entrar'),
           ),
         ],

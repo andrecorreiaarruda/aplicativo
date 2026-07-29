@@ -41,13 +41,15 @@ class _CasesPageState extends State<CasesPage> {
   @override
   Widget build(BuildContext context) {
     final items = widget.controller.cases.where((item) {
-      final matchesStatus = _filter == 'all' ||
+      final matchesStatus =
+          _filter == 'all' ||
           (_filter == 'active' && !item.isResolved) ||
           (_filter == 'resolved' && item.isResolved);
       final matchesActivity =
           _activityFilter == 'all' || item.activityType == _activityFilter;
-      final progressText =
-          item.progressEntries.map((entry) => entry.description).join(' ');
+      final progressText = item.progressEntries
+          .map((entry) => entry.description)
+          .join(' ');
       final haystack = [
         item.caseNumber.toString(),
         item.activityLabel,
@@ -74,8 +76,9 @@ class _CasesPageState extends State<CasesPage> {
             subtitle:
                 'Manutenções, instalações e desinstalações com diário contínuo de execução.',
             action: FilledButton.icon(
-              onPressed:
-                  widget.controller.equipment.isEmpty ? null : () => openForm(),
+              onPressed: widget.controller.equipment.isEmpty
+                  ? null
+                  : () => openForm(),
               icon: const Icon(Icons.add_task_rounded),
               label: const Text('Novo atendimento'),
             ),
@@ -110,7 +113,9 @@ class _CasesPageState extends State<CasesPage> {
                     segments: const [
                       ButtonSegment(value: 'active', label: Text('Ativos')),
                       ButtonSegment(
-                          value: 'resolved', label: Text('Concluídos')),
+                        value: 'resolved',
+                        label: Text('Concluídos'),
+                      ),
                       ButtonSegment(value: 'all', label: Text('Todos')),
                     ],
                     selected: {_filter},
@@ -242,8 +247,8 @@ class _CaseCard extends StatelessWidget {
                   Text(
                     item.reportedFailure,
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                   const SizedBox(height: 6),
                   Text(

@@ -1,0 +1,32 @@
+ORION ServiceLog AI 0.4.0-alpha.2+13 — validação do pacote
+
+Executado no ambiente de empacotamento:
+- inventário de arquivos;
+- validação do pubspec.yaml;
+- resolução de imports Dart relativos;
+- verificação estrutural de delimitadores em 40 arquivos Dart;
+- validação JSON;
+- revisão estática das migrations e contratos de sincronização;
+- cálculo SHA-256 dos arquivos.
+
+Não executado neste ambiente:
+- flutter analyze;
+- flutter test;
+- compilação Linux/Web/Windows/Android;
+- aplicação real das migrations em PostgreSQL/Supabase;
+- teste E2E com duas instâncias e rede intermitente.
+
+Comandos obrigatórios no ambiente de desenvolvimento:
+
+  flutter clean
+  flutter pub get
+  dart run sqflite_common_ffi_web:setup --force
+  dart format lib test
+  flutter analyze
+  flutter test
+
+Para backend de homologação:
+
+  npx supabase db push
+
+A migration mais recente é 0008_offline_operation_replay.sql.

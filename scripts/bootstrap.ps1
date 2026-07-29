@@ -17,6 +17,7 @@ try {
   Copy-Item (Join-Path $backup "pubspec.yaml"), (Join-Path $backup "analysis_options.yaml") -Destination . -Force
 
   flutter pub get
+  dart run sqflite_common_ffi_web:setup --force
   dart format lib test
   flutter analyze
   flutter test

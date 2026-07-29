@@ -1,0 +1,13 @@
+ORION ServiceLog AI 0.4.0-alpha.1
+
+Validação realizada neste ambiente:
+- estrutura de arquivos conferida;
+- imports e referências internas revisados;
+- YAML do pubspec analisado;
+- scripts Linux e PowerShell atualizados;
+- tabelas e fila SQLite revisadas;
+- testes adicionados para reidratação e fila;
+- integridade dos arquivos ZIP verificada.
+
+Limitação:
+- o ambiente de geração não possui Flutter SDK; execute localmente flutter analyze e flutter test antes de usar.

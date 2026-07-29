@@ -127,15 +127,18 @@ class _MetricGrid extends StatelessWidget {
         final columns = constraints.maxWidth >= 1100
             ? 4
             : constraints.maxWidth >= 620
-                ? 2
-                : 1;
+            ? 2
+            : 1;
         final width = (constraints.maxWidth - (columns - 1) * 14) / columns;
         return Wrap(
           spacing: 14,
           runSpacing: 14,
           children: [
             for (final item in items)
-              SizedBox(width: width, child: _MetricCard(data: item)),
+              SizedBox(
+                width: width,
+                child: _MetricCard(data: item),
+              ),
           ],
         );
       },
@@ -190,20 +193,22 @@ class _MetricCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(data.label,
-                      style: const TextStyle(color: OrionColors.muted)),
+                  Text(
+                    data.label,
+                    style: const TextStyle(color: OrionColors.muted),
+                  ),
                   const SizedBox(height: 3),
                   Text(
                     data.value,
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.w900,
-                        ),
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                   Text(
                     data.detail,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: OrionColors.muted,
-                        ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: OrionColors.muted),
                   ),
                 ],
               ),
@@ -234,12 +239,14 @@ class _RecentCases extends StatelessWidget {
                   child: Text(
                     'Atendimentos recentes',
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
                 TextButton(
-                    onPressed: onOpenCases, child: const Text('Ver todos')),
+                  onPressed: onOpenCases,
+                  child: const Text('Ver todos'),
+                ),
               ],
             ),
             const SizedBox(height: 8),
@@ -291,8 +298,10 @@ class _RecentCaseRow extends StatelessWidget {
                   '${item.equipmentLabel} · $date',
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style:
-                      const TextStyle(color: OrionColors.muted, fontSize: 12),
+                  style: const TextStyle(
+                    color: OrionColors.muted,
+                    fontSize: 12,
+                  ),
                 ),
               ],
             ),
@@ -312,8 +321,9 @@ class _OperationalPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final resolutionRate =
-        totalCases == 0 ? 0.0 : snapshot.resolvedCases / totalCases;
+    final resolutionRate = totalCases == 0
+        ? 0.0
+        : snapshot.resolvedCases / totalCases;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -322,9 +332,9 @@ class _OperationalPanel extends StatelessWidget {
           children: [
             Text(
               'Qualidade da base',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 18),
             _ProgressLine(

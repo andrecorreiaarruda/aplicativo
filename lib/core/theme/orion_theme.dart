@@ -17,15 +17,16 @@ abstract final class OrionColors {
 
 abstract final class OrionTheme {
   static ThemeData light() {
-    final scheme = ColorScheme.fromSeed(
-      seedColor: OrionColors.blue,
-      brightness: Brightness.light,
-    ).copyWith(
-      primary: OrionColors.navy,
-      secondary: OrionColors.cyan,
-      surface: Colors.white,
-      error: OrionColors.danger,
-    );
+    final scheme =
+        ColorScheme.fromSeed(
+          seedColor: OrionColors.blue,
+          brightness: Brightness.light,
+        ).copyWith(
+          primary: OrionColors.navy,
+          secondary: OrionColors.cyan,
+          surface: Colors.white,
+          error: OrionColors.danger,
+        );
 
     return ThemeData(
       useMaterial3: true,
@@ -69,8 +70,10 @@ abstract final class OrionTheme {
         indicatorColor: OrionColors.cyan,
         selectedIconTheme: IconThemeData(color: OrionColors.deepNavy),
         unselectedIconTheme: IconThemeData(color: Color(0xFFB9C8E8)),
-        selectedLabelTextStyle:
-            TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+        selectedLabelTextStyle: TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w700,
+        ),
         unselectedLabelTextStyle: TextStyle(color: Color(0xFFB9C8E8)),
       ),
       navigationBarTheme: const NavigationBarThemeData(
@@ -83,8 +86,9 @@ abstract final class OrionTheme {
           backgroundColor: OrionColors.navy,
           foregroundColor: Colors.white,
           minimumSize: const Size(0, 46),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
@@ -92,8 +96,9 @@ abstract final class OrionTheme {
           foregroundColor: OrionColors.navy,
           minimumSize: const Size(0, 46),
           side: const BorderSide(color: OrionColors.border),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
       ),
       floatingActionButtonTheme: const FloatingActionButtonThemeData(
@@ -105,11 +110,11 @@ abstract final class OrionTheme {
   }
 
   static ThemeData dark() => ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.dark,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: OrionColors.cyan,
-          brightness: Brightness.dark,
-        ),
-      );
+    useMaterial3: true,
+    brightness: Brightness.dark,
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: OrionColors.cyan,
+      brightness: Brightness.dark,
+    ),
+  );
 }

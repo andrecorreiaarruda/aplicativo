@@ -6,7 +6,7 @@ import 'service_log_repository.dart';
 
 class SupabaseServiceLogRepository implements ServiceLogRepository {
   SupabaseServiceLogRepository({SupabaseClient? client})
-      : _client = client ?? Supabase.instance.client;
+    : _client = client ?? Supabase.instance.client;
 
   final SupabaseClient _client;
 
@@ -15,7 +15,9 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
 
   @override
   Future<List<Equipment>> fetchEquipments() async {
-    final response = await _client.from('equipments').select('''
+    final response = await _client
+        .from('equipments')
+        .select('''
       id,
       equipment_model_id,
       site_id,
@@ -36,7 +38,9 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
         name,
         customers(name)
       )
-    ''').order('created_at', ascending: false);
+    ''')
+        .isFilter('deleted_at', null)
+        .order('created_at', ascending: false);
 
     return (response as List)
         .map((row) => Equipment.fromSupabase(_map(row)))
@@ -45,7 +49,9 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
 
   @override
   Future<List<ServiceCase>> fetchCases() async {
-    final response = await _client.from('service_cases').select('''
+    final response = await _client
+        .from('service_cases')
+        .select('''
       id,
       case_number,
       equipment_id,
@@ -82,7 +88,10 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
           manufacturers(name)
         )
       )
-    ''').order('opened_at', ascending: false).limit(300);
+    ''')
+        .isFilter('deleted_at', null)
+        .order('opened_at', ascending: false)
+        .limit(300);
 
     return (response as List)
         .map((row) => ServiceCase.fromSupabase(_map(row)))
@@ -92,14 +101,20 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
   @override
   Future<EquipmentCatalog> fetchEquipmentCatalog() async {
     final responses = await Future.wait<dynamic>([
-      _client.from('equipment_models').select('''
+      _client
+          .from('equipment_models')
+          .select('''
         id,
         family,
         model,
         modality,
         manufacturers(name)
-      ''').order('model'),
-      _client.from('customers').select('''
+      ''')
+          .isFilter('deleted_at', null)
+          .order('model'),
+      _client
+          .from('customers')
+          .select('''
         id,
         name,
         tax_id,
@@ -110,8 +125,12 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
         city,
         state,
         notes
-      ''').order('name'),
-      _client.from('sites').select('''
+      ''')
+          .isFilter('deleted_at', null)
+          .order('name'),
+      _client
+          .from('sites')
+          .select('''
         id,
         customer_id,
         name,
@@ -119,56 +138,60 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
         state,
         notes,
         customers(name)
-      ''').order('name'),
+      ''')
+          .isFilter('deleted_at', null)
+          .order('name'),
     ]);
 
-    final models = (responses[0] as List).map((row) {
-      final json = _map(row);
-      final manufacturer = _firstMap(json['manufacturers']);
-      return EquipmentModelOption(
-        id: json['id'] as String,
-        manufacturer: manufacturer['name'] as String? ?? '',
-        family: json['family'] as String? ?? '',
-        model: json['model'] as String? ?? '',
-        modality: json['modality'] as String? ?? '',
-      );
-    }).toList(growable: false);
+    final models = (responses[0] as List)
+        .map((row) {
+          final json = _map(row);
+          final manufacturer = _firstMap(json['manufacturers']);
+          return EquipmentModelOption(
+            id: json['id'] as String,
+            manufacturer: manufacturer['name'] as String? ?? '',
+            family: json['family'] as String? ?? '',
+            model: json['model'] as String? ?? '',
+            modality: json['modality'] as String? ?? '',
+          );
+        })
+        .toList(growable: false);
 
-    final customers = (responses[1] as List).map((row) {
-      final json = _map(row);
-      return CustomerOption(
-        id: json['id'] as String,
-        name: json['name'] as String? ?? '',
-        taxId: json['tax_id'] as String?,
-        contactName: json['contact_name'] as String?,
-        email: json['email'] as String?,
-        phone: json['phone'] as String?,
-        addressLine: json['address_line'] as String?,
-        city: json['city'] as String?,
-        state: json['state'] as String?,
-        notes: json['notes'] as String?,
-      );
-    }).toList(growable: false);
+    final customers = (responses[1] as List)
+        .map((row) {
+          final json = _map(row);
+          return CustomerOption(
+            id: json['id'] as String,
+            name: json['name'] as String? ?? '',
+            taxId: json['tax_id'] as String?,
+            contactName: json['contact_name'] as String?,
+            email: json['email'] as String?,
+            phone: json['phone'] as String?,
+            addressLine: json['address_line'] as String?,
+            city: json['city'] as String?,
+            state: json['state'] as String?,
+            notes: json['notes'] as String?,
+          );
+        })
+        .toList(growable: false);
 
-    final sites = (responses[2] as List).map((row) {
-      final json = _map(row);
-      final customer = _firstMap(json['customers']);
-      return SiteOption(
-        id: json['id'] as String,
-        customerId: json['customer_id'] as String? ?? '',
-        customer: customer['name'] as String? ?? '',
-        site: json['name'] as String? ?? '',
-        city: json['city'] as String?,
-        state: json['state'] as String?,
-        notes: json['notes'] as String?,
-      );
-    }).toList(growable: false);
+    final sites = (responses[2] as List)
+        .map((row) {
+          final json = _map(row);
+          final customer = _firstMap(json['customers']);
+          return SiteOption(
+            id: json['id'] as String,
+            customerId: json['customer_id'] as String? ?? '',
+            customer: customer['name'] as String? ?? '',
+            site: json['name'] as String? ?? '',
+            city: json['city'] as String?,
+            state: json['state'] as String?,
+            notes: json['notes'] as String?,
+          );
+        })
+        .toList(growable: false);
 
-    return EquipmentCatalog(
-      models: models,
-      customers: customers,
-      sites: sites,
-    );
+    return EquipmentCatalog(models: models, customers: customers, sites: sites);
   }
 
   @override
@@ -177,8 +200,9 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
     final manufacturerName = draft.manufacturer.trim();
     final modelName = draft.model.trim();
 
-    final manufacturerRows =
-        await _client.from('manufacturers').select('id, name');
+    final manufacturerRows = await _client
+        .from('manufacturers')
+        .select('id, name');
     final manufacturers = (manufacturerRows as List).map(_map).toList();
     final manufacturerMatch = manufacturers.where(
       (item) =>
@@ -192,10 +216,7 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
     } else {
       final created = await _client
           .from('manufacturers')
-          .insert({
-            'organization_id': organizationId,
-            'name': manufacturerName,
-          })
+          .insert({'organization_id': organizationId, 'name': manufacturerName})
           .select('id')
           .single();
       manufacturerId = created['id'] as String;
@@ -205,7 +226,9 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
         .from('equipment_models')
         .select('id, model')
         .eq('manufacturer_id', manufacturerId);
-    final modelMatch = (modelRows as List).map(_map).where(
+    final modelMatch = (modelRows as List)
+        .map(_map)
+        .where(
           (item) =>
               (item['model'] as String? ?? '').toLowerCase() ==
               modelName.toLowerCase(),
@@ -232,7 +255,9 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
     final organizationId = await _organizationId();
     final name = draft.name.trim();
     final rows = await _client.from('customers').select('id, name');
-    final match = (rows as List).map(_map).where(
+    final match = (rows as List)
+        .map(_map)
+        .where(
           (item) =>
               (item['name'] as String? ?? '').toLowerCase() ==
               name.toLowerCase(),
@@ -260,17 +285,20 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
 
   @override
   Future<void> updateCustomer(String id, CustomerDraft draft) async {
-    await _client.from('customers').update({
-      'name': draft.name.trim(),
-      'tax_id': _blankToNull(draft.taxId),
-      'contact_name': _blankToNull(draft.contactName),
-      'email': _blankToNull(draft.email),
-      'phone': _blankToNull(draft.phone),
-      'address_line': _blankToNull(draft.addressLine),
-      'city': _blankToNull(draft.city),
-      'state': _blankToNull(draft.state),
-      'notes': _blankToNull(draft.notes),
-    }).eq('id', id);
+    await _client
+        .from('customers')
+        .update({
+          'name': draft.name.trim(),
+          'tax_id': _blankToNull(draft.taxId),
+          'contact_name': _blankToNull(draft.contactName),
+          'email': _blankToNull(draft.email),
+          'phone': _blankToNull(draft.phone),
+          'address_line': _blankToNull(draft.addressLine),
+          'city': _blankToNull(draft.city),
+          'state': _blankToNull(draft.state),
+          'notes': _blankToNull(draft.notes),
+        })
+        .eq('id', id);
   }
 
   @override
@@ -281,7 +309,9 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
         .from('sites')
         .select('id, name')
         .eq('customer_id', draft.customerId);
-    final match = (rows as List).map(_map).where(
+    final match = (rows as List)
+        .map(_map)
+        .where(
           (item) =>
               (item['name'] as String? ?? '').toLowerCase() ==
               siteName.toLowerCase(),
@@ -305,13 +335,16 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
 
   @override
   Future<void> updateSite(String id, SiteDraft draft) async {
-    await _client.from('sites').update({
-      'customer_id': draft.customerId,
-      'name': draft.siteName.trim(),
-      'city': _blankToNull(draft.city),
-      'state': _blankToNull(draft.state),
-      'notes': _blankToNull(draft.notes),
-    }).eq('id', id);
+    await _client
+        .from('sites')
+        .update({
+          'customer_id': draft.customerId,
+          'name': draft.siteName.trim(),
+          'city': _blankToNull(draft.city),
+          'state': _blankToNull(draft.state),
+          'notes': _blankToNull(draft.notes),
+        })
+        .eq('id', id);
   }
 
   @override
@@ -415,9 +448,7 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
             'description': entry.description.trim(),
           },
         )
-        .where(
-          (entry) => (entry['description'] as String?)?.isNotEmpty == true,
-        )
+        .where((entry) => (entry['description'] as String?)?.isNotEmpty == true)
         .toList();
 
     if (progressPayload.isNotEmpty) {
@@ -460,53 +491,60 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
     final rawCases = body['cases'];
     if (rawCases is! List) return const [];
 
-    return rawCases.map((raw) {
-      final json = _map(raw);
-      final score = (json['final_score'] as num?)?.toDouble() ?? 0.0;
-      final reasons = <String>[];
-      if (json['exact_code_match'] == true) {
-        reasons.add('Código de erro idêntico');
-      }
-      final lexical = (json['lexical_score'] as num?)?.toDouble() ?? 0.0;
-      if (lexical > 0.05) reasons.add('Descrição textual semelhante');
-      final vector = (json['vector_similarity'] as num?)?.toDouble() ?? 0.0;
-      if (vector > 0.72) reasons.add('Alta similaridade semântica');
-      if ({'confirmed', 'recurring', 'reviewed'}
-          .contains(json['solution_confidence'])) {
-        reasons.add('Solução validada');
-      }
+    return rawCases
+        .map((raw) {
+          final json = _map(raw);
+          final score = (json['final_score'] as num?)?.toDouble() ?? 0.0;
+          final reasons = <String>[];
+          if (json['exact_code_match'] == true) {
+            reasons.add('Código de erro idêntico');
+          }
+          final lexical = (json['lexical_score'] as num?)?.toDouble() ?? 0.0;
+          if (lexical > 0.05) reasons.add('Descrição textual semelhante');
+          final vector = (json['vector_similarity'] as num?)?.toDouble() ?? 0.0;
+          if (vector > 0.72) reasons.add('Alta similaridade semântica');
+          if ({
+            'confirmed',
+            'recurring',
+            'reviewed',
+          }.contains(json['solution_confidence'])) {
+            reasons.add('Solução validada');
+          }
 
-      final serviceCase = ServiceCase(
-        id: json['service_case_id'] as String,
-        caseNumber: (json['case_number'] as num?)?.toInt() ?? 0,
-        equipmentId: json['equipment_id'] as String? ?? '',
-        equipmentLabel:
-            '${json['manufacturer'] ?? ''} ${json['equipment_model'] ?? ''} · ${json['serial_number'] ?? ''}'
-                .trim(),
-        status: 'resolved',
-        activityType:
-            json['activity_type'] as String? ?? ServiceActivityType.maintenance,
-        openedAt: DateTime.tryParse(json['opened_at'] as String? ?? '') ??
-            DateTime.now(),
-        reportedFailure: json['reported_failure'] as String? ?? '',
-        observedSymptoms: json['observed_symptoms'] as String?,
-        errorCode: json['error_code'] as String?,
-        subsystem: json['subsystem'] as String?,
-        operationalImpact: 'degraded',
-        rootCause: json['root_cause'] as String?,
-        solutionDetails: json['solution_details'] as String?,
-        validationResult: json['validation_result'] as String?,
-        finalEquipmentStatus: 'operational',
-        solutionConfidence:
-            json['solution_confidence'] as String? ?? 'unconfirmed',
-      );
+          final serviceCase = ServiceCase(
+            id: json['service_case_id'] as String,
+            caseNumber: (json['case_number'] as num?)?.toInt() ?? 0,
+            equipmentId: json['equipment_id'] as String? ?? '',
+            equipmentLabel:
+                '${json['manufacturer'] ?? ''} ${json['equipment_model'] ?? ''} · ${json['serial_number'] ?? ''}'
+                    .trim(),
+            status: 'resolved',
+            activityType:
+                json['activity_type'] as String? ??
+                ServiceActivityType.maintenance,
+            openedAt:
+                DateTime.tryParse(json['opened_at'] as String? ?? '') ??
+                DateTime.now(),
+            reportedFailure: json['reported_failure'] as String? ?? '',
+            observedSymptoms: json['observed_symptoms'] as String?,
+            errorCode: json['error_code'] as String?,
+            subsystem: json['subsystem'] as String?,
+            operationalImpact: 'degraded',
+            rootCause: json['root_cause'] as String?,
+            solutionDetails: json['solution_details'] as String?,
+            validationResult: json['validation_result'] as String?,
+            finalEquipmentStatus: 'operational',
+            solutionConfidence:
+                json['solution_confidence'] as String? ?? 'unconfirmed',
+          );
 
-      return SimilarCaseResult(
-        serviceCase: serviceCase,
-        score: score,
-        reasons: reasons,
-      );
-    }).toList(growable: false);
+          return SimilarCaseResult(
+            serviceCase: serviceCase,
+            score: score,
+            reasons: reasons,
+          );
+        })
+        .toList(growable: false);
   }
 
   @override

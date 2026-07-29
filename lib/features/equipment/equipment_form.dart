@@ -147,8 +147,11 @@ class _EquipmentFormState extends State<EquipmentForm> {
         .toList();
 
     final hasExactMatch = widget.controller.catalog.sites.any((site) {
-      final values = [site.label, site.site, '${site.customer} ${site.site}']
-          .map(_normalize);
+      final values = [
+        site.label,
+        site.site,
+        '${site.customer} ${site.site}',
+      ].map(_normalize);
       return values.contains(query);
     });
 
@@ -255,55 +258,57 @@ class _EquipmentFormState extends State<EquipmentForm> {
                     optionsBuilder: (textEditingValue) =>
                         _modelSuggestions(textEditingValue.text),
                     onSelected: _selectModelChoice,
-                    fieldViewBuilder: (
-                      context,
-                      textEditingController,
-                      focusNode,
-                      onFieldSubmitted,
-                    ) {
-                      _modelFieldController = textEditingController;
-                      _modelFocusNode = focusNode;
-                      return TextFormField(
-                        controller: textEditingController,
-                        focusNode: focusNode,
-                        textCapitalization: TextCapitalization.words,
-                        decoration: InputDecoration(
-                          labelText: 'Fabricante / modelo',
-                          hintText:
-                              'Digite, por exemplo: Azurion, Allura ou Versa HD',
-                          prefixIcon: const Icon(Icons.search_rounded),
-                          helperText:
-                              'Selecione uma correspondência ou cadastre o modelo sem sair deste formulário.',
-                          suffixIcon: textEditingController.text.isEmpty
-                              ? null
-                              : IconButton(
-                                  tooltip: 'Limpar modelo',
-                                  onPressed: () {
-                                    textEditingController.clear();
-                                    setState(() => _modelId = null);
-                                    focusNode.requestFocus();
-                                  },
-                                  icon: const Icon(Icons.clear_rounded),
-                                ),
-                        ),
-                        onChanged: (value) {
-                          final selected = _modelById(_modelId);
-                          if (selected != null &&
-                              _normalize(value) == _normalize(selected.label)) {
-                            return;
-                          }
-                          if (_modelId != null) {
-                            setState(() => _modelId = null);
-                          } else {
-                            setState(() {});
-                          }
+                    fieldViewBuilder:
+                        (
+                          context,
+                          textEditingController,
+                          focusNode,
+                          onFieldSubmitted,
+                        ) {
+                          _modelFieldController = textEditingController;
+                          _modelFocusNode = focusNode;
+                          return TextFormField(
+                            controller: textEditingController,
+                            focusNode: focusNode,
+                            textCapitalization: TextCapitalization.words,
+                            decoration: InputDecoration(
+                              labelText: 'Fabricante / modelo',
+                              hintText:
+                                  'Digite, por exemplo: Azurion, Allura ou Versa HD',
+                              prefixIcon: const Icon(Icons.search_rounded),
+                              helperText:
+                                  'Selecione uma correspondência ou cadastre o modelo sem sair deste formulário.',
+                              suffixIcon: textEditingController.text.isEmpty
+                                  ? null
+                                  : IconButton(
+                                      tooltip: 'Limpar modelo',
+                                      onPressed: () {
+                                        textEditingController.clear();
+                                        setState(() => _modelId = null);
+                                        focusNode.requestFocus();
+                                      },
+                                      icon: const Icon(Icons.clear_rounded),
+                                    ),
+                            ),
+                            onChanged: (value) {
+                              final selected = _modelById(_modelId);
+                              if (selected != null &&
+                                  _normalize(value) ==
+                                      _normalize(selected.label)) {
+                                return;
+                              }
+                              if (_modelId != null) {
+                                setState(() => _modelId = null);
+                              } else {
+                                setState(() {});
+                              }
+                            },
+                            onFieldSubmitted: (_) => onFieldSubmitted(),
+                            validator: (_) => _modelId == null
+                                ? 'Selecione uma correspondência ou cadastre um novo modelo.'
+                                : null,
+                          );
                         },
-                        onFieldSubmitted: (_) => onFieldSubmitted(),
-                        validator: (_) => _modelId == null
-                            ? 'Selecione uma correspondência ou cadastre um novo modelo.'
-                            : null,
-                      );
-                    },
                     optionsViewBuilder: (context, onSelected, options) {
                       final choices = options.toList();
                       final width = math.min(
@@ -381,8 +386,9 @@ class _EquipmentFormState extends State<EquipmentForm> {
                   const SizedBox(height: 14),
                   TextFormField(
                     controller: _serial,
-                    decoration:
-                        const InputDecoration(labelText: 'Número de série'),
+                    decoration: const InputDecoration(
+                      labelText: 'Número de série',
+                    ),
                     validator: _required,
                   ),
                   const SizedBox(height: 14),
@@ -391,52 +397,54 @@ class _EquipmentFormState extends State<EquipmentForm> {
                     optionsBuilder: (textEditingValue) =>
                         _siteSuggestions(textEditingValue.text),
                     onSelected: _selectSiteChoice,
-                    fieldViewBuilder: (
-                      context,
-                      textEditingController,
-                      focusNode,
-                      onFieldSubmitted,
-                    ) {
-                      _siteFieldController = textEditingController;
-                      _siteFocusNode = focusNode;
-                      return TextFormField(
-                        controller: textEditingController,
-                        focusNode: focusNode,
-                        textCapitalization: TextCapitalization.words,
-                        decoration: InputDecoration(
-                          labelText: 'Cliente / local de instalação',
-                          hintText:
-                              'Digite o hospital, clínica, sala, bunker ou cidade',
-                          prefixIcon: const Icon(Icons.business_outlined),
-                          helperText:
-                              'Selecione uma correspondência ou cadastre o cliente/local sem sair do equipamento.',
-                          suffixIcon: textEditingController.text.isEmpty
-                              ? null
-                              : IconButton(
-                                  tooltip: 'Limpar cliente/local',
-                                  onPressed: () {
-                                    textEditingController.clear();
-                                    setState(() => _siteId = null);
-                                    focusNode.requestFocus();
-                                  },
-                                  icon: const Icon(Icons.clear_rounded),
-                                ),
-                        ),
-                        onChanged: (value) {
-                          final selected = _siteById(_siteId);
-                          if (selected != null &&
-                              _normalize(value) == _normalize(selected.label)) {
-                            return;
-                          }
-                          if (_siteId != null) {
-                            setState(() => _siteId = null);
-                          } else {
-                            setState(() {});
-                          }
+                    fieldViewBuilder:
+                        (
+                          context,
+                          textEditingController,
+                          focusNode,
+                          onFieldSubmitted,
+                        ) {
+                          _siteFieldController = textEditingController;
+                          _siteFocusNode = focusNode;
+                          return TextFormField(
+                            controller: textEditingController,
+                            focusNode: focusNode,
+                            textCapitalization: TextCapitalization.words,
+                            decoration: InputDecoration(
+                              labelText: 'Cliente / local de instalação',
+                              hintText:
+                                  'Digite o hospital, clínica, sala, bunker ou cidade',
+                              prefixIcon: const Icon(Icons.business_outlined),
+                              helperText:
+                                  'Selecione uma correspondência ou cadastre o cliente/local sem sair do equipamento.',
+                              suffixIcon: textEditingController.text.isEmpty
+                                  ? null
+                                  : IconButton(
+                                      tooltip: 'Limpar cliente/local',
+                                      onPressed: () {
+                                        textEditingController.clear();
+                                        setState(() => _siteId = null);
+                                        focusNode.requestFocus();
+                                      },
+                                      icon: const Icon(Icons.clear_rounded),
+                                    ),
+                            ),
+                            onChanged: (value) {
+                              final selected = _siteById(_siteId);
+                              if (selected != null &&
+                                  _normalize(value) ==
+                                      _normalize(selected.label)) {
+                                return;
+                              }
+                              if (_siteId != null) {
+                                setState(() => _siteId = null);
+                              } else {
+                                setState(() {});
+                              }
+                            },
+                            onFieldSubmitted: (_) => onFieldSubmitted(),
+                          );
                         },
-                        onFieldSubmitted: (_) => onFieldSubmitted(),
-                      );
-                    },
                     optionsViewBuilder: (context, onSelected, options) {
                       final choices = options.toList();
                       final width = math.min(
@@ -483,8 +491,9 @@ class _EquipmentFormState extends State<EquipmentForm> {
 
                                 final site = choice.site!;
                                 return ListTile(
-                                  leading:
-                                      const Icon(Icons.location_on_outlined),
+                                  leading: const Icon(
+                                    Icons.location_on_outlined,
+                                  ),
                                   title: Text(
                                     site.label,
                                     style: const TextStyle(
@@ -551,8 +560,9 @@ class _EquipmentFormState extends State<EquipmentForm> {
                   const SizedBox(height: 14),
                   DropdownButtonFormField<String>(
                     initialValue: _status,
-                    decoration:
-                        const InputDecoration(labelText: 'Condição atual'),
+                    decoration: const InputDecoration(
+                      labelText: 'Condição atual',
+                    ),
                     items: const [
                       DropdownMenuItem(
                         value: 'operational',
@@ -562,10 +572,7 @@ class _EquipmentFormState extends State<EquipmentForm> {
                         value: 'degraded',
                         child: Text('Degradado'),
                       ),
-                      DropdownMenuItem(
-                        value: 'stopped',
-                        child: Text('Parado'),
-                      ),
+                      DropdownMenuItem(value: 'stopped', child: Text('Parado')),
                       DropdownMenuItem(
                         value: 'decommissioned',
                         child: Text('Desativado'),
@@ -690,12 +697,13 @@ class _EquipmentModelFormState extends State<EquipmentModelForm> {
     final query = rawQuery.trim();
     if (query.isEmpty) return;
 
-    final manufacturers = widget.controller.catalog.models
-        .map((item) => item.manufacturer.trim())
-        .where((value) => value.isNotEmpty)
-        .toSet()
-        .toList()
-      ..sort((a, b) => b.length.compareTo(a.length));
+    final manufacturers =
+        widget.controller.catalog.models
+            .map((item) => item.manufacturer.trim())
+            .where((value) => value.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort((a, b) => b.length.compareTo(a.length));
 
     for (final manufacturer in manufacturers) {
       final normalizedQuery = query.toLowerCase();
@@ -815,11 +823,7 @@ class _EquipmentModelFormState extends State<EquipmentModelForm> {
 }
 
 class CustomerForm extends StatefulWidget {
-  const CustomerForm({
-    super.key,
-    required this.controller,
-    this.customer,
-  });
+  const CustomerForm({super.key, required this.controller, this.customer});
 
   final ServiceLogController controller;
   final CustomerOption? customer;
@@ -900,8 +904,9 @@ class _CustomerFormState extends State<CustomerForm> {
     return Column(
       children: [
         _DialogHeader(
-          title:
-              widget.customer == null ? 'Cadastrar cliente' : 'Editar cliente',
+          title: widget.customer == null
+              ? 'Cadastrar cliente'
+              : 'Editar cliente',
           onClose: () => Navigator.of(context).pop(),
         ),
         const Divider(height: 1),
@@ -956,11 +961,7 @@ class _CustomerFormState extends State<CustomerForm> {
                       );
                       if (constraints.maxWidth < 520) {
                         return Column(
-                          children: [
-                            phone,
-                            const SizedBox(height: 14),
-                            email,
-                          ],
+                          children: [phone, const SizedBox(height: 14), email],
                         );
                       }
                       return Row(
@@ -1001,11 +1002,7 @@ class _CustomerFormState extends State<CustomerForm> {
                       );
                       if (constraints.maxWidth < 440) {
                         return Column(
-                          children: [
-                            city,
-                            const SizedBox(height: 14),
-                            state,
-                          ],
+                          children: [city, const SizedBox(height: 14), state],
                         );
                       }
                       return Row(
@@ -1037,8 +1034,9 @@ class _CustomerFormState extends State<CustomerForm> {
           saving: widget.controller.saving,
           onCancel: () => Navigator.of(context).pop(),
           onSave: _save,
-          saveLabel:
-              widget.customer == null ? 'Salvar cliente' : 'Salvar alterações',
+          saveLabel: widget.customer == null
+              ? 'Salvar cliente'
+              : 'Salvar alterações',
         ),
       ],
     );
@@ -1183,11 +1181,7 @@ class _SiteFormState extends State<SiteForm> {
                       );
                       if (constraints.maxWidth < 440) {
                         return Column(
-                          children: [
-                            city,
-                            const SizedBox(height: 14),
-                            state,
-                          ],
+                          children: [city, const SizedBox(height: 14), state],
                         );
                       }
                       return Row(
@@ -1370,8 +1364,9 @@ class _CustomerSiteFormState extends State<CustomerSiteForm> {
                     TextFormField(
                       controller: _customer,
                       textCapitalization: TextCapitalization.words,
-                      decoration:
-                          const InputDecoration(labelText: 'Nome do cliente'),
+                      decoration: const InputDecoration(
+                        labelText: 'Nome do cliente',
+                      ),
                       validator: _required,
                     ),
                     const SizedBox(height: 14),
@@ -1385,8 +1380,9 @@ class _CustomerSiteFormState extends State<CustomerSiteForm> {
                     DropdownButtonFormField<String>(
                       initialValue: _customerId,
                       isExpanded: true,
-                      decoration:
-                          const InputDecoration(labelText: 'Cliente existente'),
+                      decoration: const InputDecoration(
+                        labelText: 'Cliente existente',
+                      ),
                       items: customers
                           .map(
                             (item) => DropdownMenuItem(
@@ -1419,7 +1415,8 @@ class _CustomerSiteFormState extends State<CustomerSiteForm> {
                         controller: _city,
                         textCapitalization: TextCapitalization.words,
                         decoration: const InputDecoration(
-                            labelText: 'Cidade (opcional)'),
+                          labelText: 'Cidade (opcional)',
+                        ),
                       );
                       final state = TextFormField(
                         controller: _state,
@@ -1432,11 +1429,7 @@ class _CustomerSiteFormState extends State<CustomerSiteForm> {
                       );
                       if (constraints.maxWidth < 440) {
                         return Column(
-                          children: [
-                            city,
-                            const SizedBox(height: 14),
-                            state,
-                          ],
+                          children: [city, const SizedBox(height: 14), state],
                         );
                       }
                       return Row(
@@ -1483,15 +1476,12 @@ class _DialogHeader extends StatelessWidget {
           Expanded(
             child: Text(
               title,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
             ),
           ),
-          IconButton(
-            onPressed: onClose,
-            icon: const Icon(Icons.close_rounded),
-          ),
+          IconButton(onPressed: onClose, icon: const Icon(Icons.close_rounded)),
         ],
       ),
     );

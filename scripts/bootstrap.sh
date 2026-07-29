@@ -22,6 +22,7 @@ cp -R "$backup_dir/lib" "$backup_dir/assets" "$backup_dir/test" .
 cp "$backup_dir/pubspec.yaml" "$backup_dir/analysis_options.yaml" .
 
 flutter pub get
+dart run sqflite_common_ffi_web:setup --force
 dart format lib test
 flutter analyze
 flutter test

@@ -1,16 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../data/models/equipment.dart';
 import '../../data/models/service_case.dart';
 import '../shell/service_log_controller.dart';
 
 class CaseForm extends StatefulWidget {
-  const CaseForm({
-    super.key,
-    required this.controller,
-    this.initialCase,
-  });
+  const CaseForm({super.key, required this.controller, this.initialCase});
 
   final ServiceLogController controller;
   final ServiceCase? initialCase;
@@ -20,6 +17,8 @@ class CaseForm extends StatefulWidget {
 }
 
 class _CaseFormState extends State<CaseForm> {
+  static const _uuid = Uuid();
+
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _failure;
   late final TextEditingController _symptoms;
@@ -58,7 +57,8 @@ class _CaseFormState extends State<CaseForm> {
     _status = item?.status ?? 'open';
     _impact = item?.operationalImpact ?? 'degraded';
     _confidence = item?.solutionConfidence ?? 'unconfirmed';
-    _finalStatus = item?.finalEquipmentStatus ??
+    _finalStatus =
+        item?.finalEquipmentStatus ??
         (_activityType == ServiceActivityType.deinstallation
             ? 'decommissioned'
             : 'operational');
@@ -113,8 +113,9 @@ class _CaseFormState extends State<CaseForm> {
     setState(() {
       _activityType = value;
       if (widget.initialCase == null) {
-        _impact =
-            value == ServiceActivityType.maintenance ? 'degraded' : 'none';
+        _impact = value == ServiceActivityType.maintenance
+            ? 'degraded'
+            : 'none';
         _finalStatus = value == ServiceActivityType.deinstallation
             ? 'decommissioned'
             : 'operational';
@@ -127,14 +128,15 @@ class _CaseFormState extends State<CaseForm> {
     if (description.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content: Text('Descreva o andamento antes de adicionar.')),
+          content: Text('Descreva o andamento antes de adicionar.'),
+        ),
       );
       return;
     }
     setState(() {
       _progressEntries.add(
         ServiceProgressEntry(
-          id: 'local-${DateTime.now().microsecondsSinceEpoch}',
+          id: _uuid.v4(),
           occurredAt: DateTime.now(),
           description: description,
         ),
@@ -148,7 +150,7 @@ class _CaseFormState extends State<CaseForm> {
     if (description.isEmpty) return;
     _progressEntries.add(
       ServiceProgressEntry(
-        id: 'local-${DateTime.now().microsecondsSinceEpoch}',
+        id: _uuid.v4(),
         occurredAt: DateTime.now(),
         description: description,
       ),
@@ -217,8 +219,8 @@ class _CaseFormState extends State<CaseForm> {
                           ? 'Novo atendimento técnico'
                           : 'Atendimento #${widget.initialCase!.caseNumber}',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                     Text(
                       '${ServiceActivityType.label(_activityType)} com histórico contínuo no mesmo atendimento.',
@@ -292,8 +294,9 @@ class _CaseFormState extends State<CaseForm> {
                 ),
                 Step(
                   title: Text(_copy.executionStepTitle),
-                  subtitle:
-                      const Text('Registros cumulativos por dia de trabalho'),
+                  subtitle: const Text(
+                    'Registros cumulativos por dia de trabalho',
+                  ),
                   isActive: _step >= 1,
                   content: _ExecutionStep(
                     copy: _copy,
@@ -358,7 +361,8 @@ class _CaseFormState extends State<CaseForm> {
                       )
                     : const Icon(Icons.save_outlined),
                 label: Text(
-                    _resolving ? 'Concluir atendimento' : 'Salvar andamento'),
+                  _resolving ? 'Concluir atendimento' : 'Salvar andamento',
+                ),
               ),
             ],
           ),
@@ -593,9 +597,9 @@ class _ExecutionStep extends StatelessWidget {
         const SizedBox(height: 22),
         Text(
           'Diário de andamento',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 6),
         const Text(
@@ -767,8 +771,9 @@ class _ConclusionStep extends StatelessWidget {
             TextFormField(
               controller: serviceTime,
               keyboardType: TextInputType.number,
-              decoration:
-                  const InputDecoration(labelText: 'Tempo técnico (min)'),
+              decoration: const InputDecoration(
+                labelText: 'Tempo técnico (min)',
+              ),
               validator: _nonNegativeInteger,
             ),
           ],

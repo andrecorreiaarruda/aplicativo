@@ -36,7 +36,8 @@ class _AssistantPageState extends State<AssistantPage> {
     if (_query.text.trim().length < 5) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content: Text('Descreva a falha com pelo menos 5 caracteres.')),
+          content: Text('Descreva a falha com pelo menos 5 caracteres.'),
+        ),
       );
       return;
     }
@@ -100,7 +101,8 @@ class _AssistantPageState extends State<AssistantPage> {
                         initialValue: _equipmentId ?? '',
                         isExpanded: true,
                         decoration: const InputDecoration(
-                            labelText: 'Equipamento (opcional)'),
+                          labelText: 'Equipamento (opcional)',
+                        ),
                         items: [
                           const DropdownMenuItem<String>(
                             value: '',
@@ -117,19 +119,22 @@ class _AssistantPageState extends State<AssistantPage> {
                           ),
                         ],
                         onChanged: (value) => setState(
-                          () => _equipmentId =
-                              value == null || value.isEmpty ? null : value,
+                          () => _equipmentId = value == null || value.isEmpty
+                              ? null
+                              : value,
                         ),
                       ),
                       TextField(
                         controller: _errorCode,
-                        decoration:
-                            const InputDecoration(labelText: 'Código de erro'),
+                        decoration: const InputDecoration(
+                          labelText: 'Código de erro',
+                        ),
                       ),
                       TextField(
                         controller: _subsystem,
-                        decoration:
-                            const InputDecoration(labelText: 'Subsistema'),
+                        decoration: const InputDecoration(
+                          labelText: 'Subsistema',
+                        ),
                       ),
                     ];
                     if (constraints.maxWidth < 760) {
@@ -159,14 +164,19 @@ class _AssistantPageState extends State<AssistantPage> {
                     final warning = const Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.info_outline_rounded,
-                            color: OrionColors.blue, size: 20),
+                        Icon(
+                          Icons.info_outline_rounded,
+                          color: OrionColors.blue,
+                          size: 20,
+                        ),
                         SizedBox(width: 8),
                         Expanded(
                           child: Text(
                             'As sugestões são evidências históricas, não procedimento oficial do fabricante nem diagnóstico autônomo.',
                             style: TextStyle(
-                                color: OrionColors.muted, height: 1.35),
+                              color: OrionColors.muted,
+                              height: 1.35,
+                            ),
                           ),
                         ),
                       ],
@@ -179,9 +189,11 @@ class _AssistantPageState extends State<AssistantPage> {
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : const Icon(Icons.search_rounded),
-                      label: Text(_searching
-                          ? 'Pesquisando...'
-                          : 'Buscar casos semelhantes'),
+                      label: Text(
+                        _searching
+                            ? 'Pesquisando...'
+                            : 'Buscar casos semelhantes',
+                      ),
                     );
                     if (constraints.maxWidth < 700) {
                       return Column(
@@ -193,7 +205,7 @@ class _AssistantPageState extends State<AssistantPage> {
                       children: [
                         Expanded(child: warning),
                         const SizedBox(width: 20),
-                        button
+                        button,
                       ],
                     );
                   },
@@ -225,10 +237,9 @@ class _AssistantPageState extends State<AssistantPage> {
         else ...[
           Text(
             '${_results.length} casos recuperados',
-            style: Theme.of(context)
-                .textTheme
-                .titleLarge
-                ?.copyWith(fontWeight: FontWeight.w800),
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 12),
           ..._results.map(
@@ -275,7 +286,9 @@ class _ResultCard extends StatelessWidget {
                           ),
                         ),
                         StatusChip(
-                            value: item.solutionConfidence, compact: true),
+                          value: item.solutionConfidence,
+                          compact: true,
+                        ),
                         if (item.errorCode?.isNotEmpty == true)
                           _Tag(item.errorCode!),
                       ],
@@ -288,8 +301,10 @@ class _ResultCard extends StatelessWidget {
                   ],
                 );
                 final score = Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 9,
+                  ),
                   decoration: BoxDecoration(
                     color: OrionColors.paleCyan,
                     borderRadius: BorderRadius.circular(12),
@@ -313,21 +328,25 @@ class _ResultCard extends StatelessWidget {
                   children: [
                     Expanded(child: heading),
                     const SizedBox(width: 14),
-                    score
+                    score,
                   ],
                 );
               },
             ),
             const SizedBox(height: 16),
             _EvidenceBlock(
-                label: 'Falha registrada', text: item.reportedFailure),
+              label: 'Falha registrada',
+              text: item.reportedFailure,
+            ),
             if (item.observedSymptoms?.isNotEmpty == true)
               _EvidenceBlock(label: 'Sintomas', text: item.observedSymptoms!),
             if (item.rootCause?.isNotEmpty == true)
               _EvidenceBlock(label: 'Causa-raiz', text: item.rootCause!),
             if (item.solutionDetails?.isNotEmpty == true)
               _EvidenceBlock(
-                  label: 'Solução aplicada', text: item.solutionDetails!),
+                label: 'Solução aplicada',
+                text: item.solutionDetails!,
+              ),
             if (item.validationResult?.isNotEmpty == true)
               _EvidenceBlock(label: 'Validação', text: item.validationResult!),
             if (result.reasons.isNotEmpty) ...[
@@ -357,8 +376,10 @@ class _EvidenceBlock extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label,
-              style: const TextStyle(color: OrionColors.muted, fontSize: 12)),
+          Text(
+            label,
+            style: const TextStyle(color: OrionColors.muted, fontSize: 12),
+          ),
           const SizedBox(height: 3),
           Text(text, style: const TextStyle(height: 1.42)),
         ],
@@ -380,8 +401,10 @@ class _Tag extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: OrionColors.border),
       ),
-      child: Text(label,
-          style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
+      child: Text(
+        label,
+        style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
+      ),
     );
   }
 }

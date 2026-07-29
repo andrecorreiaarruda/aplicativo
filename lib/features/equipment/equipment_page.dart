@@ -138,8 +138,8 @@ class _EquipmentPageState extends State<EquipmentPage> {
                 final columns = constraints.maxWidth >= 1160
                     ? 3
                     : constraints.maxWidth >= 700
-                        ? 2
-                        : 1;
+                    ? 2
+                    : 1;
                 final width =
                     (constraints.maxWidth - (columns - 1) * 14) / columns;
                 return Wrap(
@@ -147,7 +147,10 @@ class _EquipmentPageState extends State<EquipmentPage> {
                   runSpacing: 14,
                   children: [
                     for (final item in equipment)
-                      SizedBox(width: width, child: _EquipmentCard(item: item)),
+                      SizedBox(
+                        width: width,
+                        child: _EquipmentCard(item: item),
+                      ),
                   ],
                 );
               },
@@ -209,7 +212,9 @@ class _EquipmentCard extends StatelessWidget {
             _InfoLine(icon: Icons.qr_code_2_rounded, text: item.serialNumber),
             if (item.locationLabel.isNotEmpty)
               _InfoLine(
-                  icon: Icons.location_on_outlined, text: item.locationLabel),
+                icon: Icons.location_on_outlined,
+                text: item.locationLabel,
+              ),
             if (item.softwareVersion?.isNotEmpty == true)
               _InfoLine(
                 icon: Icons.memory_rounded,

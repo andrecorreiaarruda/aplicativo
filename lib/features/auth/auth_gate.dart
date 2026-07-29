@@ -1,15 +1,20 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../data/repositories/supabase_service_log_repository.dart';
+import '../../core/runtime/app_runtime.dart';
+import '../../data/repositories/offline_first_service_log_repository.dart';
+import '../../data/repositories/service_log_repository.dart';
 import '../shell/service_log_workspace.dart';
 import 'login_screen.dart';
 import 'organization_setup_screen.dart';
 
 class AuthGate extends StatefulWidget {
-  const AuthGate({super.key});
+  const AuthGate({super.key, required this.runtime});
+
+  final AppRuntime runtime;
 
   @override
   State<AuthGate> createState() => _AuthGateState();
@@ -18,7 +23,9 @@ class AuthGate extends StatefulWidget {
 class _AuthGateState extends State<AuthGate> {
   late final StreamSubscription<AuthState> _subscription;
   Session? _session;
-  Future<WorkspaceProfile?>? _profileFuture;
+  Future<_WorkspaceSession?>? _profileFuture;
+  String? _repositoryKey;
+  ServiceLogRepository? _repository;
 
   @override
   void initState() {
@@ -31,6 +38,10 @@ class _AuthGateState extends State<AuthGate> {
       setState(() {
         _session = state.session;
         _profileFuture = _session == null ? null : _fetchProfile();
+        if (_session == null) {
+          _repository = null;
+          _repositoryKey = null;
+        }
       });
     });
   }
@@ -45,21 +56,56 @@ class _AuthGateState extends State<AuthGate> {
     setState(() => _profileFuture = _fetchProfile());
   }
 
-  Future<WorkspaceProfile?> _fetchProfile() async {
-    final user = Supabase.instance.client.auth.currentUser;
+  Future<_WorkspaceSession?> _fetchProfile() async {
+    final client = Supabase.instance.client;
+    final user = client.auth.currentUser;
     if (user == null) return null;
-    final response = await Supabase.instance.client
-        .from('profiles')
-        .select('full_name, role, organizations(name)')
-        .eq('user_id', user.id)
-        .maybeSingle();
-    if (response == null) return null;
-    final organization = _firstMap(response['organizations']);
-    return WorkspaceProfile(
-      fullName: response['full_name'] as String? ?? user.email ?? 'Usuário',
-      role: _roleLabel(response['role'] as String? ?? 'technician'),
-      organizationName: organization['name'] as String? ?? 'Organização',
+    final cacheKey = 'workspace_profile:${user.id}';
+
+    try {
+      final response = await client
+          .from('profiles')
+          .select('organization_id, full_name, role, organizations(name)')
+          .eq('user_id', user.id)
+          .maybeSingle();
+      if (response == null) return null;
+      final organization = _firstMap(response['organizations']);
+      final session = _WorkspaceSession(
+        userId: user.id,
+        organizationId: response['organization_id'] as String,
+        profile: WorkspaceProfile(
+          fullName: response['full_name'] as String? ?? user.email ?? 'Usuário',
+          role: _roleLabel(response['role'] as String? ?? 'technician'),
+          organizationName: organization['name'] as String? ?? 'Organização',
+        ),
+      );
+      await widget.runtime.localStore.writeMetadata(
+        'auth-cache',
+        cacheKey,
+        jsonEncode(session.toJson()),
+      );
+      return session;
+    } catch (_) {
+      final cached = await widget.runtime.localStore.readMetadata(
+        'auth-cache',
+        cacheKey,
+      );
+      if (cached == null || cached.isEmpty) rethrow;
+      return _WorkspaceSession.fromJson(
+        Map<String, dynamic>.from(jsonDecode(cached) as Map),
+      );
+    }
+  }
+
+  ServiceLogRepository _repositoryFor(_WorkspaceSession session) {
+    final key = '${session.organizationId}:${session.userId}';
+    if (_repository != null && _repositoryKey == key) return _repository!;
+    _repositoryKey = key;
+    _repository = OfflineFirstServiceLogRepository.supabase(
+      store: widget.runtime.localStore,
+      namespace: 'supabase:$key',
     );
+    return _repository!;
   }
 
   @override
@@ -67,7 +113,7 @@ class _AuthGateState extends State<AuthGate> {
     if (_session == null) return const LoginScreen();
 
     final profileFuture = _profileFuture ??= _fetchProfile();
-    return FutureBuilder<WorkspaceProfile?>(
+    return FutureBuilder<_WorkspaceSession?>(
       future: profileFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
@@ -90,8 +136,10 @@ class _AuthGateState extends State<AuthGate> {
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                     const SizedBox(height: 8),
-                    Text(snapshot.error.toString(),
-                        textAlign: TextAlign.center),
+                    const Text(
+                      'Conecte-se uma vez para armazenar o perfil neste dispositivo. Depois disso, o aplicativo poderá abrir offline.',
+                      textAlign: TextAlign.center,
+                    ),
                     const SizedBox(height: 18),
                     FilledButton(
                       onPressed: _reloadProfile,
@@ -103,13 +151,15 @@ class _AuthGateState extends State<AuthGate> {
             ),
           );
         }
-        final profile = snapshot.data;
-        if (profile == null) {
+        final session = snapshot.data;
+        if (session == null) {
           return OrganizationSetupScreen(onCompleted: _reloadProfile);
         }
         return ServiceLogWorkspace(
-          repository: SupabaseServiceLogRepository(),
-          profile: profile,
+          repository: _repositoryFor(session),
+          profile: session.profile,
+          storageLabel: '${widget.runtime.localStore.storageLabel} + Supabase',
+          startupWarning: widget.runtime.storageWarning,
         );
       },
     );
@@ -135,5 +185,37 @@ class _AuthGateState extends State<AuthGate> {
       default:
         return 'Técnico';
     }
+  }
+}
+
+class _WorkspaceSession {
+  const _WorkspaceSession({
+    required this.userId,
+    required this.organizationId,
+    required this.profile,
+  });
+
+  final String userId;
+  final String organizationId;
+  final WorkspaceProfile profile;
+
+  Map<String, dynamic> toJson() => {
+    'userId': userId,
+    'organizationId': organizationId,
+    'fullName': profile.fullName,
+    'role': profile.role,
+    'organizationName': profile.organizationName,
+  };
+
+  factory _WorkspaceSession.fromJson(Map<String, dynamic> json) {
+    return _WorkspaceSession(
+      userId: json['userId'] as String,
+      organizationId: json['organizationId'] as String,
+      profile: WorkspaceProfile(
+        fullName: json['fullName'] as String? ?? 'Usuário',
+        role: json['role'] as String? ?? 'Técnico',
+        organizationName: json['organizationName'] as String? ?? 'Organização',
+      ),
+    );
   }
 }

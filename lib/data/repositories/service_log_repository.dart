@@ -1,5 +1,6 @@
 import '../models/equipment.dart';
 import '../models/service_case.dart';
+import '../sync/sync_operation.dart';
 
 abstract class ServiceLogRepository {
   bool get isDemo;
@@ -18,4 +19,9 @@ abstract class ServiceLogRepository {
   Future<void> saveCase(ServiceCaseDraft draft);
   Future<List<SimilarCaseResult>> searchSimilarCases(SimilarCaseQuery query);
   Future<void> signOut();
+}
+
+abstract class SyncAwareRepository {
+  Future<SyncStatusSnapshot> fetchSyncStatus();
+  Future<void> syncPendingChanges();
 }

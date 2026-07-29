@@ -33,7 +33,8 @@ class ServiceProgressEntry {
   factory ServiceProgressEntry.fromSupabase(Map<String, dynamic> json) {
     return ServiceProgressEntry(
       id: json['id'] as String? ?? '',
-      occurredAt: DateTime.tryParse(json['occurred_at'] as String? ?? '') ??
+      occurredAt:
+          DateTime.tryParse(json['occurred_at'] as String? ?? '') ??
           DateTime.now(),
       description: json['description'] as String? ?? '',
     );
@@ -107,10 +108,11 @@ class ServiceCase {
     final manufacturerName = manufacturer['name'] as String? ?? '';
     final modelName = model['model'] as String? ?? '';
     final serial = equipment['serial_number'] as String? ?? '';
-    final progress = _listOfMaps(json['service_progress_entries'])
-        .map(ServiceProgressEntry.fromSupabase)
-        .toList()
-      ..sort((a, b) => a.occurredAt.compareTo(b.occurredAt));
+    final progress =
+        _listOfMaps(
+            json['service_progress_entries'],
+          ).map(ServiceProgressEntry.fromSupabase).toList()
+          ..sort((a, b) => a.occurredAt.compareTo(b.occurredAt));
 
     return ServiceCase(
       id: json['id'] as String,
@@ -120,7 +122,8 @@ class ServiceCase {
       status: json['status'] as String? ?? 'open',
       activityType:
           json['activity_type'] as String? ?? ServiceActivityType.maintenance,
-      openedAt: DateTime.tryParse(json['opened_at'] as String? ?? '') ??
+      openedAt:
+          DateTime.tryParse(json['opened_at'] as String? ?? '') ??
           DateTime.now(),
       closedAt: DateTime.tryParse(json['closed_at'] as String? ?? ''),
       reportedFailure: json['reported_failure'] as String? ?? '',
