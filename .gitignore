@@ -43,3 +43,29 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Segredos e configurações locais
+.env
+.env.*
+!.env.example
+
+# Flutter e Dart
+.dart_tool/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Bancos locais
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+
+# Supabase local
+supabase/.temp/
+supabase/.branches/
+
+# IDE e sistema
+.vscode/
+.idea/
+.DS_Store
