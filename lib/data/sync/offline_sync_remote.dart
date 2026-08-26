@@ -22,5 +22,13 @@ abstract class OfflineSyncRemote {
   Future<SyncApplyResult> applyOperation(SyncOperation operation);
   Future<RemoteSyncSnapshot> pullSnapshot();
   Future<List<SimilarCaseResult>> searchSimilarCases(SimilarCaseQuery query);
+
+  /// Aciona a indexação semântica (embedding) de um atendimento já
+  /// sincronizado e marcado como resolvido. É uma operação de
+  /// enriquecimento best-effort: uma falha aqui não deve desfazer nem
+  /// bloquear a sincronização do atendimento em si, que já foi
+  /// confirmada pelo servidor antes desta chamada.
+  Future<void> indexResolvedCase(String serviceCaseId);
+
   Future<void> signOut();
 }

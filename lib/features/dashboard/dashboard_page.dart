@@ -117,15 +117,26 @@ class _MetricGrid extends StatelessWidget {
         icon: Icons.power_settings_new_rounded,
         label: 'Indisponibilidade',
         value: _duration(snapshot.totalDowntimeMinutes),
-        detail: 'Acumulada no histórico',
+        detail: _coverage(snapshot, 'Acumulada nos casos apurados'),
         accent: OrionColors.danger,
+      ),
+      _MetricData(
+        icon: Icons.balance_rounded,
+        label: 'Parada por hora de solução',
+        value: _ratio(snapshot.downtimeToServiceRatio),
+        detail: snapshot.downtimeToServiceRatio == null
+            ? 'Base ainda insuficiente'
+            : _coverage(snapshot, 'Indisponível ÷ tempo técnico'),
+        accent: OrionColors.warning,
       ),
     ];
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final columns = constraints.maxWidth >= 1100
-            ? 4
+        final columns = constraints.maxWidth >= 1400
+            ? 5
+            : constraints.maxWidth >= 1100
+            ? 3
             : constraints.maxWidth >= 620
             ? 2
             : 1;
@@ -150,6 +161,23 @@ class _MetricGrid extends StatelessWidget {
     final hours = minutes ~/ 60;
     final remainder = minutes % 60;
     return hours == 0 ? '$minutes min' : '${hours}h ${remainder}min';
+  }
+
+  static String _ratio(double? value) {
+    if (value == null) return '—';
+    return '${value.toStringAsFixed(1)}×';
+  }
+
+  /// Avisa quando parte dos atendimentos resolvidos ainda não teve a
+  /// indisponibilidade apurada pelo servidor. Sem isso, o número aparenta
+  /// cobrir todo o histórico quando na verdade ignora os casos concluídos
+  /// offline e ainda não sincronizados.
+  static String _coverage(DashboardSnapshot snapshot, String fallback) {
+    final pending = snapshot.casesAwaitingDowntime;
+    if (pending <= 0) return fallback;
+    return pending == 1
+        ? '1 atendimento aguardando sincronização'
+        : '$pending atendimentos aguardando sincronização';
   }
 }
 

@@ -158,6 +158,16 @@ class OfflineFirstServiceLogRepository
               result.revision!,
             );
           }
+          if (operation.entityType == 'service_case' &&
+              operation.payload['status'] == 'resolved') {
+            try {
+              await _remote.indexResolvedCase(operation.entityId);
+            } catch (_) {
+              // Indexação por IA é best-effort: o atendimento já foi
+              // confirmado pelo servidor e não deve voltar para a fila
+              // só porque a indexação semântica falhou.
+            }
+          }
         } catch (error) {
           if (error is! SyncConflictException) {
             await _queue.markFailed(operation, error);

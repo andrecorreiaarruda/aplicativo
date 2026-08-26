@@ -79,6 +79,7 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
       service_progress_entries(
         id,
         occurred_at,
+        ended_at,
         description
       ),
       equipments(
@@ -410,8 +411,8 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
       'validation_result': _blankToNull(draft.validationResult),
       'final_equipment_status': resolved ? draft.finalEquipmentStatus : null,
       'solution_confidence': draft.solutionConfidence,
-      'downtime_minutes': draft.downtimeMinutes,
-      'service_minutes': draft.serviceMinutes,
+      // downtime_minutes e service_minutes não são enviados: são derivados
+      // no servidor a partir das sessões do diário e do impacto operacional.
       'requires_follow_up': draft.requiresFollowUp,
       'follow_up_notes': _blankToNull(draft.followUpNotes),
       'safety_notes': _blankToNull(draft.safetyNotes),
@@ -445,10 +446,11 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
             'organization_id': organizationId,
             'service_case_id': serviceCaseId,
             'occurred_at': entry.occurredAt.toIso8601String(),
+            'ended_at': entry.endedAt?.toIso8601String(),
             'description': entry.description.trim(),
           },
         )
-        .where((entry) => (entry['description'] as String?)?.isNotEmpty == true)
+        .where((entry) => entry['description']?.isNotEmpty == true)
         .toList();
 
     if (progressPayload.isNotEmpty) {
@@ -457,13 +459,25 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
 
     if (resolved) {
       try {
-        await _client.functions.invoke(
-          'generate-case-embedding',
-          body: {'serviceCaseId': serviceCaseId},
-        );
+        await indexResolvedCase(serviceCaseId);
       } catch (_) {
         // O atendimento permanece salvo mesmo se a indexação estiver indisponível.
       }
+    }
+  }
+
+  /// Chama a Edge Function `generate-case-embedding` para o atendimento
+  /// informado. A própria função só indexa quando `status = 'resolved'`
+  /// (ela consulta o registro com a sessão do usuário e valida isso do
+  /// lado do servidor), então é seguro chamar assim que soubermos que o
+  /// atendimento foi salvo com esse status.
+  Future<void> indexResolvedCase(String serviceCaseId) async {
+    final response = await _client.functions.invoke(
+      'generate-case-embedding',
+      body: {'serviceCaseId': serviceCaseId},
+    );
+    if (response.status < 200 || response.status >= 300) {
+      throw StateError('A indexação por IA do atendimento falhou.');
     }
   }
 
@@ -492,59 +506,65 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
     if (rawCases is! List) return const [];
 
     return rawCases
-        .map((raw) {
-          final json = _map(raw);
-          final score = (json['final_score'] as num?)?.toDouble() ?? 0.0;
-          final reasons = <String>[];
-          if (json['exact_code_match'] == true) {
-            reasons.add('Código de erro idêntico');
-          }
-          final lexical = (json['lexical_score'] as num?)?.toDouble() ?? 0.0;
-          if (lexical > 0.05) reasons.add('Descrição textual semelhante');
-          final vector = (json['vector_similarity'] as num?)?.toDouble() ?? 0.0;
-          if (vector > 0.72) reasons.add('Alta similaridade semântica');
-          if ({
-            'confirmed',
-            'recurring',
-            'reviewed',
-          }.contains(json['solution_confidence'])) {
-            reasons.add('Solução validada');
-          }
-
-          final serviceCase = ServiceCase(
-            id: json['service_case_id'] as String,
-            caseNumber: (json['case_number'] as num?)?.toInt() ?? 0,
-            equipmentId: json['equipment_id'] as String? ?? '',
-            equipmentLabel:
-                '${json['manufacturer'] ?? ''} ${json['equipment_model'] ?? ''} · ${json['serial_number'] ?? ''}'
-                    .trim(),
-            status: 'resolved',
-            activityType:
-                json['activity_type'] as String? ??
-                ServiceActivityType.maintenance,
-            openedAt:
-                DateTime.tryParse(json['opened_at'] as String? ?? '') ??
-                DateTime.now(),
-            reportedFailure: json['reported_failure'] as String? ?? '',
-            observedSymptoms: json['observed_symptoms'] as String?,
-            errorCode: json['error_code'] as String?,
-            subsystem: json['subsystem'] as String?,
-            operationalImpact: 'degraded',
-            rootCause: json['root_cause'] as String?,
-            solutionDetails: json['solution_details'] as String?,
-            validationResult: json['validation_result'] as String?,
-            finalEquipmentStatus: 'operational',
-            solutionConfidence:
-                json['solution_confidence'] as String? ?? 'unconfirmed',
-          );
-
-          return SimilarCaseResult(
-            serviceCase: serviceCase,
-            score: score,
-            reasons: reasons,
-          );
-        })
+        .map((raw) => mapSimilarCaseJson(_map(raw)))
         .toList(growable: false);
+  }
+
+  /// Converte um item do array `cases` retornado pela Edge Function
+  /// `search-similar-cases` em um [SimilarCaseResult]. Extraído como
+  /// método estático (em vez de closure inline) para poder ser testado
+  /// diretamente, sem precisar de um `SupabaseClient` real.
+  static SimilarCaseResult mapSimilarCaseJson(Map<String, dynamic> json) {
+    final score = (json['final_score'] as num?)?.toDouble() ?? 0.0;
+    final reasons = <String>[];
+    if (json['exact_code_match'] == true) {
+      reasons.add('Código de erro idêntico');
+    }
+    final lexical = (json['lexical_score'] as num?)?.toDouble() ?? 0.0;
+    if (lexical > 0.05) reasons.add('Descrição textual semelhante');
+    final vector = (json['vector_similarity'] as num?)?.toDouble() ?? 0.0;
+    if (vector > 0.72) reasons.add('Alta similaridade semântica');
+    if ({
+      'confirmed',
+      'recurring',
+      'reviewed',
+    }.contains(json['solution_confidence'])) {
+      reasons.add('Solução validada');
+    }
+
+    final serviceCase = ServiceCase(
+      id: json['service_case_id'] as String,
+      caseNumber: (json['case_number'] as num?)?.toInt() ?? 0,
+      equipmentId: json['equipment_id'] as String? ?? '',
+      equipmentLabel:
+          '${json['manufacturer'] ?? ''} ${json['equipment_model'] ?? ''} · ${json['serial_number'] ?? ''}'
+              .trim(),
+      status: 'resolved',
+      activityType:
+          json['activity_type'] as String? ?? ServiceActivityType.maintenance,
+      openedAt:
+          DateTime.tryParse(json['opened_at'] as String? ?? '') ??
+          DateTime.now(),
+      reportedFailure: json['reported_failure'] as String? ?? '',
+      observedSymptoms: json['observed_symptoms'] as String?,
+      errorCode: json['error_code'] as String?,
+      subsystem: json['subsystem'] as String?,
+      operationalImpact: 'degraded',
+      rootCause: json['root_cause'] as String?,
+      solutionDetails: json['solution_details'] as String?,
+      validationResult: json['validation_result'] as String?,
+      finalEquipmentStatus: 'operational',
+      solutionConfidence: json['solution_confidence'] as String? ?? 'unconfirmed',
+    );
+
+    final explanation = json['ai_explanation'] as String?;
+
+    return SimilarCaseResult(
+      serviceCase: serviceCase,
+      score: score,
+      reasons: reasons,
+      explanation: explanation?.trim().isEmpty == true ? null : explanation,
+    );
   }
 
   @override

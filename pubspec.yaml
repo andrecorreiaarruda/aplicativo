@@ -1,7 +1,7 @@
 name: servicelog_ai
 description: Plataforma ORION de registro técnico, histórico de falhas e assistência por IA.
 publish_to: none
-version: 0.4.0-alpha.2+15
+version: 0.4.0-alpha.2+21
 
 environment:
   sdk: ">=3.9.0 <4.0.0"
@@ -17,6 +17,14 @@ dependencies:
   sqflite_common_ffi: ">=2.3.7 <2.4.0"
   sqflite_common_ffi_web: ^1.0.2
   sqlite3: ^2.9.4
+  # Sem este pacote, sqflite_common_ffi não encontra uma libsqlite3
+  # utilizável via dlopen em Android/iOS (não há garantia de uma
+  # biblioteca do sistema compatível nessas plataformas). Sem ele, a
+  # abertura do banco falha silenciosamente e o app cai no fallback em
+  # memória (main.dart), perdendo a persistência offline-first no
+  # celular. Linha 0.5.x porque o projeto ainda está em sqlite3 ^2.9.4;
+  # a partir de sqlite3 3.x este pacote deixa de ser necessário.
+  sqlite3_flutter_libs: ^0.5.42
   uuid: ^4.5.1
 
 dev_dependencies:

@@ -19,16 +19,34 @@ class ServiceActivityType {
   }
 }
 
+/// Uma entrada do diário de andamento. Representa uma sessão de trabalho:
+/// [occurredAt] é o início da sessão, [endedAt] é o fim — fica nulo
+/// enquanto a sessão está em aberto (o técnico ainda não a encerrou).
 class ServiceProgressEntry {
   const ServiceProgressEntry({
     required this.id,
     required this.occurredAt,
     required this.description,
+    this.endedAt,
   });
 
   final String id;
   final DateTime occurredAt;
+  final DateTime? endedAt;
   final String description;
+
+  /// Verdadeiro quando a sessão foi iniciada mas ainda não foi encerrada.
+  bool get isOpen => endedAt == null;
+
+  /// Duração da sessão, ou nula enquanto ela ainda estiver em aberto.
+  Duration? get duration => endedAt?.difference(occurredAt);
+
+  ServiceProgressEntry copyWith({DateTime? endedAt}) => ServiceProgressEntry(
+    id: id,
+    occurredAt: occurredAt,
+    description: description,
+    endedAt: endedAt ?? this.endedAt,
+  );
 
   factory ServiceProgressEntry.fromSupabase(Map<String, dynamic> json) {
     return ServiceProgressEntry(
@@ -36,6 +54,9 @@ class ServiceProgressEntry {
       occurredAt:
           DateTime.tryParse(json['occurred_at'] as String? ?? '') ??
           DateTime.now(),
+      endedAt: json['ended_at'] == null
+          ? null
+          : DateTime.tryParse(json['ended_at'] as String),
       description: json['description'] as String? ?? '',
     );
   }
@@ -100,6 +121,12 @@ class ServiceCase {
 
   bool get isResolved => status == 'resolved';
   String get activityLabel => ServiceActivityType.label(activityType);
+
+  /// Verdadeiro quando alguma sessão do diário foi iniciada mas ainda
+  /// não foi encerrada. Um atendimento não pode ser concluído nesse
+  /// estado — ver [DemoServiceLogRepository.saveCase].
+  bool get hasOpenProgressSession =>
+      progressEntries.any((entry) => entry.isOpen);
 
   factory ServiceCase.fromSupabase(Map<String, dynamic> json) {
     final equipment = _firstMap(json['equipments']);
@@ -183,8 +210,6 @@ class ServiceCaseDraft {
     this.solutionDetails,
     this.validationResult,
     this.finalEquipmentStatus,
-    this.downtimeMinutes,
-    this.serviceMinutes,
     this.requiresFollowUp = false,
     this.followUpNotes,
     this.safetyNotes,
@@ -207,8 +232,10 @@ class ServiceCaseDraft {
   final String? solutionDetails;
   final String? validationResult;
   final String? finalEquipmentStatus;
-  final int? downtimeMinutes;
-  final int? serviceMinutes;
+
+  // Não há downtimeMinutes/serviceMinutes aqui de propósito: os tempos são
+  // derivados (sessões do diário no cliente, ponderação por impacto no
+  // servidor) e nunca informados por quem monta o rascunho.
   final bool requiresFollowUp;
   final String? followUpNotes;
   final String? safetyNotes;
@@ -233,9 +260,17 @@ class SimilarCaseResult {
     required this.serviceCase,
     required this.score,
     required this.reasons,
+    this.explanation,
   });
 
   final ServiceCase serviceCase;
   final double score;
   final List<String> reasons;
+
+  /// Explicação em linguagem natural, gerada pela busca inteligente,
+  /// sobre por que este caso é relevante. Nula quando a busca vem do
+  /// fallback local (heurística offline) ou quando a geração da
+  /// explicação falhou no servidor — nesses casos, `reasons` ainda
+  /// carrega os sinais determinísticos.
+  final String? explanation;
 }

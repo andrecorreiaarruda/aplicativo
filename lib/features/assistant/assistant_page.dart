@@ -334,6 +334,37 @@ class _ResultCard extends StatelessWidget {
               },
             ),
             const SizedBox(height: 16),
+            if (result.explanation != null) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: OrionColors.paleCyan,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(
+                      Icons.auto_awesome_rounded,
+                      size: 18,
+                      color: OrionColors.navy,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        result.explanation!,
+                        style: const TextStyle(
+                          color: OrionColors.navy,
+                          fontStyle: FontStyle.italic,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             _EvidenceBlock(
               label: 'Falha registrada',
               text: item.reportedFailure,

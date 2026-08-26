@@ -87,6 +87,10 @@ class SupabaseSyncGateway implements OfflineSyncRemote {
       _repository.searchSimilarCases(query);
 
   @override
+  Future<void> indexResolvedCase(String serviceCaseId) =>
+      _repository.indexResolvedCase(serviceCaseId);
+
+  @override
   Future<void> signOut() => _client.auth.signOut();
 
   static Map<String, dynamic> _map(dynamic value) {
