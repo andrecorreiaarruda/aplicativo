@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/theme/orion_theme.dart';
 import '../../data/models/equipment.dart';
 import '../../data/models/service_case.dart';
+import '../../data/models/service_time_metrics.dart';
 import '../shell/service_log_controller.dart';
 
 class CaseForm extends StatefulWidget {
@@ -29,11 +31,8 @@ class _CaseFormState extends State<CaseForm> {
   late final TextEditingController _rootCause;
   late final TextEditingController _solution;
   late final TextEditingController _validation;
-  late final TextEditingController _downtime;
-  late final TextEditingController _serviceTime;
   late final TextEditingController _followUpNotes;
   late final TextEditingController _safetyNotes;
-  late final TextEditingController _progressNote;
   late List<ServiceProgressEntry> _progressEntries;
 
   String? _equipmentId;
@@ -75,15 +74,8 @@ class _CaseFormState extends State<CaseForm> {
     _rootCause = TextEditingController(text: item?.rootCause ?? '');
     _solution = TextEditingController(text: item?.solutionDetails ?? '');
     _validation = TextEditingController(text: item?.validationResult ?? '');
-    _downtime = TextEditingController(
-      text: item?.downtimeMinutes?.toString() ?? '',
-    );
-    _serviceTime = TextEditingController(
-      text: item?.serviceMinutes?.toString() ?? '',
-    );
     _followUpNotes = TextEditingController(text: item?.followUpNotes ?? '');
     _safetyNotes = TextEditingController(text: item?.safetyNotes ?? '');
-    _progressNote = TextEditingController();
   }
 
   @override
@@ -98,11 +90,8 @@ class _CaseFormState extends State<CaseForm> {
       _rootCause,
       _solution,
       _validation,
-      _downtime,
-      _serviceTime,
       _followUpNotes,
       _safetyNotes,
-      _progressNote,
     ]) {
       controller.dispose();
     }
@@ -123,39 +112,30 @@ class _CaseFormState extends State<CaseForm> {
     });
   }
 
-  void _addProgressEntry() {
-    final description = _progressNote.text.trim();
-    if (description.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Descreva o andamento antes de adicionar.'),
-        ),
-      );
-      return;
-    }
-    setState(() {
-      _progressEntries.add(
-        ServiceProgressEntry(
-          id: _uuid.v4(),
-          occurredAt: DateTime.now(),
-          description: description,
-        ),
-      );
-      _progressNote.clear();
-    });
+  /// Sessões antigas (anteriores à migration 0009) e sessões vindas de
+  /// outros dispositivos podem chegar sem horário de fim. O registro
+  /// manual é o padrão do app, então normalmente isso não acontece — mas
+  /// a conclusão do atendimento continua bloqueada nesses casos, para não
+  /// gerar tempo técnico incompleto.
+  bool get _hasOpenSession => _progressEntries.any((entry) => entry.isOpen);
+
+  Future<void> _addManualSession() async {
+    final entry = await showDialog<ServiceProgressEntry>(
+      context: context,
+      builder: (context) => _ManualSessionDialog(uuid: _uuid),
+    );
+    if (entry != null) setState(() => _progressEntries.add(entry));
   }
 
-  void _appendPendingProgress() {
-    final description = _progressNote.text.trim();
-    if (description.isEmpty) return;
-    _progressEntries.add(
-      ServiceProgressEntry(
-        id: _uuid.v4(),
-        occurredAt: DateTime.now(),
-        description: description,
-      ),
+  Future<void> _editSessionEnd(ServiceProgressEntry entry) async {
+    final updated = await showDialog<ServiceProgressEntry>(
+      context: context,
+      builder: (context) => _ManualSessionDialog(uuid: _uuid, initial: entry),
     );
-    _progressNote.clear();
+    if (updated == null) return;
+    final index = _progressEntries.indexWhere((item) => item.id == entry.id);
+    if (index == -1) return;
+    setState(() => _progressEntries[index] = updated);
   }
 
   Future<void> _save() async {
@@ -170,9 +150,19 @@ class _CaseFormState extends State<CaseForm> {
       _formKey.currentState!.validate();
       return;
     }
+    if (_resolving && _hasOpenSession) {
+      setState(() => _step = 1);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Encerre a sessão de trabalho em aberto no diário antes de concluir o atendimento.',
+          ),
+        ),
+      );
+      return;
+    }
     if (!_formKey.currentState!.validate()) return;
 
-    _appendPendingProgress();
     final ok = await widget.controller.saveCase(
       ServiceCaseDraft(
         id: widget.initialCase?.id,
@@ -192,8 +182,6 @@ class _CaseFormState extends State<CaseForm> {
         solutionDetails: _solution.text,
         validationResult: _validation.text,
         finalEquipmentStatus: _finalStatus,
-        downtimeMinutes: int.tryParse(_downtime.text.trim()),
-        serviceMinutes: int.tryParse(_serviceTime.text.trim()),
         requiresFollowUp: _requiresFollowUp,
         followUpNotes: _followUpNotes.text,
         safetyNotes: _safetyNotes.text,
@@ -304,9 +292,9 @@ class _CaseFormState extends State<CaseForm> {
                     measurements: _measurements,
                     rootCause: _rootCause,
                     safetyNotes: _safetyNotes,
-                    progressNote: _progressNote,
                     entries: _progressEntries,
-                    onAddEntry: _addProgressEntry,
+                    onAddManualSession: _addManualSession,
+                    onEditSessionEnd: _editSessionEnd,
                     onRemoveEntry: (entry) {
                       setState(() => _progressEntries.remove(entry));
                     },
@@ -321,8 +309,7 @@ class _CaseFormState extends State<CaseForm> {
                     resolving: _resolving,
                     solution: _solution,
                     validation: _validation,
-                    downtime: _downtime,
-                    serviceTime: _serviceTime,
+                    entries: _progressEntries,
                     followUpNotes: _followUpNotes,
                     confidence: _confidence,
                     finalStatus: _finalStatus,
@@ -537,9 +524,9 @@ class _ExecutionStep extends StatelessWidget {
     required this.measurements,
     required this.rootCause,
     required this.safetyNotes,
-    required this.progressNote,
     required this.entries,
-    required this.onAddEntry,
+    required this.onAddManualSession,
+    required this.onEditSessionEnd,
     required this.onRemoveEntry,
   });
 
@@ -548,9 +535,9 @@ class _ExecutionStep extends StatelessWidget {
   final TextEditingController measurements;
   final TextEditingController rootCause;
   final TextEditingController safetyNotes;
-  final TextEditingController progressNote;
   final List<ServiceProgressEntry> entries;
-  final VoidCallback onAddEntry;
+  final VoidCallback onAddManualSession;
+  final ValueChanged<ServiceProgressEntry> onEditSessionEnd;
   final ValueChanged<ServiceProgressEntry> onRemoveEntry;
 
   @override
@@ -558,6 +545,8 @@ class _ExecutionStep extends StatelessWidget {
     final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
     final orderedEntries = [...entries]
       ..sort((a, b) => b.occurredAt.compareTo(a.occurredAt));
+    final openEntries = entries.where((entry) => entry.isOpen).toList();
+    final openEntry = openEntries.isEmpty ? null : openEntries.first;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -602,31 +591,24 @@ class _ExecutionStep extends StatelessWidget {
           ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 6),
-        const Text(
-          'Adicione quantos registros forem necessários. Eles permanecerão vinculados ao mesmo atendimento até sua conclusão.',
+        Text(
+          copy.progressEntryHint,
+          style: const TextStyle(fontSize: 12, color: OrionColors.muted),
         ),
         const SizedBox(height: 12),
-        TextFormField(
-          controller: progressNote,
-          minLines: 3,
-          maxLines: 6,
-          decoration: InputDecoration(
-            labelText: copy.progressEntryLabel,
-            hintText: copy.progressEntryHint,
-            suffixIcon: IconButton(
-              tooltip: 'Adicionar ao diário',
-              onPressed: onAddEntry,
-              icon: const Icon(Icons.add_task_rounded),
-            ),
+        if (openEntry != null) ...[
+          _OpenSessionBanner(
+            entry: openEntry,
+            onEditSessionEnd: () => onEditSessionEnd(openEntry),
           ),
-        ),
-        const SizedBox(height: 10),
+          const SizedBox(height: 12),
+        ],
         Align(
           alignment: Alignment.centerLeft,
           child: FilledButton.tonalIcon(
-            onPressed: onAddEntry,
-            icon: const Icon(Icons.playlist_add_rounded),
-            label: const Text('Adicionar registro ao diário'),
+            onPressed: onAddManualSession,
+            icon: const Icon(Icons.edit_calendar_outlined),
+            label: Text(copy.progressEntryLabel),
           ),
         ),
         if (orderedEntries.isNotEmpty) ...[
@@ -637,9 +619,18 @@ class _ExecutionStep extends StatelessWidget {
               child: Card(
                 margin: EdgeInsets.zero,
                 child: ListTile(
-                  leading: const Icon(Icons.event_note_outlined),
+                  leading: Icon(
+                    entry.isOpen
+                        ? Icons.hourglass_top_rounded
+                        : Icons.event_note_outlined,
+                    color: entry.isOpen ? OrionColors.blue : null,
+                  ),
                   title: Text(
-                    dateFormat.format(entry.occurredAt),
+                    entry.isOpen
+                        ? '${dateFormat.format(entry.occurredAt)} · em andamento'
+                        : '${dateFormat.format(entry.occurredAt)} → '
+                              '${dateFormat.format(entry.endedAt!)} · '
+                              '${_ExecutionStep.formatDuration(entry.duration!)}',
                     style: const TextStyle(fontWeight: FontWeight.w800),
                   ),
                   subtitle: Padding(
@@ -659,6 +650,223 @@ class _ExecutionStep extends StatelessWidget {
       ],
     );
   }
+
+  /// Mesmo formato usado por [_ComputedTimeSummary], para que a duração de
+  /// uma sessão e o total do atendimento sejam lidos da mesma maneira.
+  static String formatDuration(Duration duration) {
+    final minutes = duration.inMinutes;
+    if (minutes <= 0) return '0 min';
+    final hours = minutes ~/ 60;
+    final remainder = minutes % 60;
+    return hours == 0 ? '$minutes min' : '${hours}h ${remainder}min';
+  }
+}
+
+class _OpenSessionBanner extends StatelessWidget {
+  const _OpenSessionBanner({
+    required this.entry,
+    required this.onEditSessionEnd,
+  });
+
+  final ServiceProgressEntry entry;
+  final VoidCallback onEditSessionEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    final timeFormat = DateFormat('dd/MM/yyyy HH:mm');
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: OrionColors.paleCyan,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.hourglass_top_rounded, color: OrionColors.blue),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Sessão sem horário de fim',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Iniciada em ${timeFormat.format(entry.occurredAt)}, sem '
+                  'horário de fim. O atendimento não pode ser concluído '
+                  'enquanto ela estiver assim.',
+                  style: const TextStyle(fontSize: 12, color: OrionColors.muted),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          TextButton(
+            onPressed: onEditSessionEnd,
+            child: const Text('Informar fim'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ManualSessionDialog extends StatefulWidget {
+  const _ManualSessionDialog({required this.uuid, this.initial});
+
+  final Uuid uuid;
+
+  /// Sessão já existente a editar. Quando nula, o diálogo cria uma nova.
+  final ServiceProgressEntry? initial;
+
+  @override
+  State<_ManualSessionDialog> createState() => _ManualSessionDialogState();
+}
+
+class _ManualSessionDialogState extends State<_ManualSessionDialog> {
+  late final TextEditingController _description;
+  late DateTime _startedAt;
+  late DateTime _endedAt;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    final initial = widget.initial;
+    _description = TextEditingController(text: initial?.description ?? '');
+    _startedAt =
+        initial?.occurredAt ??
+        DateTime.now().subtract(const Duration(hours: 1));
+    _endedAt = initial?.endedAt ?? DateTime.now();
+  }
+
+  @override
+  void dispose() {
+    _description.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pick({required bool isStart}) async {
+    final current = isStart ? _startedAt : _endedAt;
+    final date = await showDatePicker(
+      context: context,
+      initialDate: current,
+      firstDate: DateTime(current.year - 2),
+      lastDate: DateTime.now().add(const Duration(days: 1)),
+    );
+    if (date == null || !mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(current),
+    );
+    if (time == null) return;
+    final picked = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      time.hour,
+      time.minute,
+    );
+    setState(() {
+      if (isStart) {
+        _startedAt = picked;
+      } else {
+        _endedAt = picked;
+      }
+      _error = null;
+    });
+  }
+
+  void _confirm() {
+    if (_description.text.trim().isEmpty) {
+      setState(() => _error = 'Descreva o que foi feito nesta sessão.');
+      return;
+    }
+    if (!_endedAt.isAfter(_startedAt)) {
+      setState(() => _error = 'O fim da sessão precisa ser posterior ao início.');
+      return;
+    }
+    Navigator.of(context).pop(
+      ServiceProgressEntry(
+        id: widget.initial?.id ?? widget.uuid.v4(),
+        occurredAt: _startedAt,
+        endedAt: _endedAt,
+        description: _description.text.trim(),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
+
+    return AlertDialog(
+      title: const Row(
+        children: [
+          Icon(Icons.edit_calendar_outlined),
+          SizedBox(width: 10),
+          Text('Sessão de trabalho'),
+        ],
+      ),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: _description,
+              minLines: 3,
+              maxLines: 5,
+              decoration: const InputDecoration(
+                labelText: 'Andamento registrado',
+                hintText: 'O que foi executado nesta sessão de trabalho.',
+              ),
+            ),
+            const SizedBox(height: 14),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.play_arrow_rounded),
+              title: const Text('Início'),
+              subtitle: Text(dateFormat.format(_startedAt)),
+              trailing: TextButton(
+                onPressed: () => _pick(isStart: true),
+                child: const Text('Alterar'),
+              ),
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.stop_circle_outlined),
+              title: const Text('Fim'),
+              subtitle: Text(dateFormat.format(_endedAt)),
+              trailing: TextButton(
+                onPressed: () => _pick(isStart: false),
+                child: const Text('Alterar'),
+              ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                _error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(onPressed: _confirm, child: const Text('Adicionar')),
+      ],
+    );
+  }
 }
 
 class _ConclusionStep extends StatelessWidget {
@@ -667,8 +875,7 @@ class _ConclusionStep extends StatelessWidget {
     required this.resolving,
     required this.solution,
     required this.validation,
-    required this.downtime,
-    required this.serviceTime,
+    required this.entries,
     required this.followUpNotes,
     required this.confidence,
     required this.finalStatus,
@@ -682,8 +889,7 @@ class _ConclusionStep extends StatelessWidget {
   final bool resolving;
   final TextEditingController solution;
   final TextEditingController validation;
-  final TextEditingController downtime;
-  final TextEditingController serviceTime;
+  final List<ServiceProgressEntry> entries;
   final TextEditingController followUpNotes;
   final String confidence;
   final String finalStatus;
@@ -758,26 +964,7 @@ class _ConclusionStep extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 14),
-        _AdaptiveFields(
-          children: [
-            TextFormField(
-              controller: downtime,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Máquina indisponível (min)',
-              ),
-              validator: _nonNegativeInteger,
-            ),
-            TextFormField(
-              controller: serviceTime,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Tempo técnico (min)',
-              ),
-              validator: _nonNegativeInteger,
-            ),
-          ],
-        ),
+        _ComputedTimeSummary(entries: entries),
         const SizedBox(height: 10),
         SwitchListTile.adaptive(
           contentPadding: EdgeInsets.zero,
@@ -797,14 +984,64 @@ class _ConclusionStep extends StatelessWidget {
     );
   }
 
-  static String? _nonNegativeInteger(String? value) {
-    final text = value?.trim() ?? '';
-    if (text.isEmpty) return null;
-    final parsed = int.tryParse(text);
-    if (parsed == null || parsed < 0) {
-      return 'Informe um número inteiro positivo.';
-    }
-    return null;
+}
+
+/// Resumo somente-leitura dos tempos derivados das sessões do diário.
+/// Substituiu os campos "Máquina indisponível" e "Tempo técnico", que antes
+/// eram digitados manualmente pelo técnico na conclusão do atendimento.
+class _ComputedTimeSummary extends StatelessWidget {
+  const _ComputedTimeSummary({required this.entries});
+
+  final List<ServiceProgressEntry> entries;
+
+  @override
+  Widget build(BuildContext context) {
+    final serviceMinutes = ServiceTimeMetrics.serviceMinutes(entries);
+    final closedSessions = entries.where((entry) => !entry.isOpen).length;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: OrionColors.paleCyan,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.timer_outlined, color: OrionColors.blue),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Tempo técnico: ${_format(serviceMinutes)}',
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            closedSessions == 0
+                ? 'Nenhuma sessão de trabalho registrada no diário — o tempo técnico ficará zerado.'
+                : 'Somado de $closedSessions ${closedSessions == 1 ? 'sessão encerrada' : 'sessões encerradas'} no diário.',
+            style: const TextStyle(fontSize: 12, color: OrionColors.muted),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'A indisponibilidade do equipamento é calculada no servidor, a partir do impacto operacional, e aparece após a sincronização.',
+            style: const TextStyle(fontSize: 12, color: OrionColors.muted),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _format(int minutes) {
+    if (minutes <= 0) return '0 min';
+    final hours = minutes ~/ 60;
+    final remainder = minutes % 60;
+    return hours == 0 ? '$minutes min' : '${hours}h ${remainder}min';
   }
 }
 

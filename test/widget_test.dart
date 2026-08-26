@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:servicelog_ai/core/storage/memory_snapshot_store.dart';
 import 'package:servicelog_ai/core/theme/orion_theme.dart';
 import 'package:servicelog_ai/data/repositories/demo_service_log_repository.dart';
+import 'package:servicelog_ai/features/equipment/equipment_form.dart';
 import 'package:servicelog_ai/features/shell/service_log_workspace.dart';
 
 void main() {
@@ -87,10 +88,18 @@ void main() {
       await tester.enterText(modelField, 'Azurion');
       await tester.pumpAndSettle();
 
-      expect(find.text('Philips Azurion 7 M20'), findsOneWidget);
+      // O formulário abre sobre a página de equipamentos, que já lista o
+      // mesmo modelo nos dados semeados. Restringir o finder ao formulário
+      // garante que estamos verificando a sugestão, e não o item da lista
+      // atrás do diálogo.
+      final suggestion = find.descendant(
+        of: find.byType(EquipmentForm),
+        matching: find.text('Philips Azurion 7 M20'),
+      );
+      expect(suggestion, findsOneWidget);
       expect(find.textContaining('Cadastrar “Azurion”'), findsOneWidget);
 
-      await tester.tap(find.text('Philips Azurion 7 M20'));
+      await tester.tap(suggestion);
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);

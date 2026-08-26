@@ -1,0 +1,38 @@
+ORION ServiceLog AI 0.4.0-alpha.2+21 — validação da revisão
+
+Executado em ambiente de desenvolvimento (Zorin OS, Linux):
+- flutter pub get: 25 dependências resolvidas, incluindo sqlite3_flutter_libs 0.5.42;
+- flutter analyze: nenhum apontamento;
+- flutter test: 30 testes, todos aprovados;
+- flutter run -d linux: aplicação compilada e executada (revisão +19).
+
+Executado no ambiente de empacotamento:
+- verificação estrutural de delimitadores nos arquivos Dart e SQL alterados;
+- comparação estrutural da função apply_offline_operation entre 0008, 0009 e 0010;
+- verify_contract.sh.
+
+Não executado:
+- compilação e execução em Android ou iOS — sqlite3_flutter_libs foi adicionado
+  justamente para essas plataformas e permanece sem verificação em aparelho real;
+- compilação Web e Windows;
+- aplicação das migrations 0009 e 0010 em PostgreSQL/Supabase;
+- deploy e execução das Edge Functions, incluindo a geração de explicações por IA;
+- teste E2E com duas instâncias e rede intermitente.
+
+Comandos no ambiente de desenvolvimento:
+
+  flutter clean
+  flutter pub get
+  dart run sqflite_common_ffi_web:setup --force
+  dart format lib test
+  flutter analyze
+  flutter test
+  bash verify_contract.sh
+
+Para backend de homologação:
+
+  npx supabase db push
+  npx supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
+  npx supabase functions deploy search-similar-cases
+
+A migration mais recente é 0010_computed_service_times.sql.

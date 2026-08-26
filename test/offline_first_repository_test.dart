@@ -85,6 +85,154 @@ void main() {
   });
 
   test(
+    'indexa por IA um atendimento resolvido após sincronizar com sucesso',
+    () async {
+      final store = MemorySnapshotStore();
+      final local = DemoServiceLogRepository.offlineMirror(
+        storage: store,
+        namespace: 'test-index-resolved',
+      );
+      final remote = _FakeRemote();
+      final repository = OfflineFirstServiceLogRepository(
+        local: local,
+        remote: remote,
+        store: store,
+        namespace: 'test-index-resolved',
+      );
+
+      final modelId = await repository.createEquipmentModel(
+        const EquipmentModelDraft(
+          manufacturer: 'Philips',
+          model: 'Allura Xper FD10',
+          modality: 'Angiografia',
+        ),
+      );
+      await repository.createEquipment(
+        EquipmentDraft(
+          modelId: modelId,
+          serialNumber: 'SN-TESTE-001',
+          status: 'operational',
+        ),
+      );
+      final equipmentId = (await repository.fetchEquipments()).single.id;
+
+      await repository.saveCase(
+        ServiceCaseDraft(
+          equipmentId: equipmentId,
+          reportedFailure: 'Falha resolvida em teste',
+          status: 'resolved',
+          operationalImpact: 'none',
+          solutionConfidence: 'confirmed',
+        ),
+      );
+
+      // O id precisa ser lido ANTES de sincronizar: o pull substitui o
+      // estado local pelo snapshot remoto, e o fake devolve um snapshot
+      // vazio.
+      final caseId = (await repository.fetchCases()).single.id;
+
+      await repository.syncPendingChanges();
+
+      expect(remote.indexedCaseIds, [caseId]);
+    },
+  );
+
+  test('não aciona indexação por IA para atendimentos ainda abertos', () async {
+    final store = MemorySnapshotStore();
+    final local = DemoServiceLogRepository.offlineMirror(
+      storage: store,
+      namespace: 'test-index-open',
+    );
+    final remote = _FakeRemote();
+    final repository = OfflineFirstServiceLogRepository(
+      local: local,
+      remote: remote,
+      store: store,
+      namespace: 'test-index-open',
+    );
+
+    final modelId = await repository.createEquipmentModel(
+      const EquipmentModelDraft(
+        manufacturer: 'Philips',
+        model: 'Allura Xper FD10',
+        modality: 'Angiografia',
+      ),
+    );
+    await repository.createEquipment(
+      EquipmentDraft(
+        modelId: modelId,
+        serialNumber: 'SN-TESTE-002',
+        status: 'operational',
+      ),
+    );
+    final equipmentId = (await repository.fetchEquipments()).single.id;
+
+    await repository.saveCase(
+      ServiceCaseDraft(
+        equipmentId: equipmentId,
+        reportedFailure: 'Falha ainda em diagnóstico',
+        status: 'diagnosing',
+        operationalImpact: 'degraded',
+        solutionConfidence: 'unconfirmed',
+      ),
+    );
+
+    await repository.syncPendingChanges();
+
+    expect(remote.indexedCaseIds, isEmpty);
+  });
+
+  test(
+    'falha de indexação por IA não impede a sincronização do atendimento',
+    () async {
+      final store = MemorySnapshotStore();
+      final local = DemoServiceLogRepository.offlineMirror(
+        storage: store,
+        namespace: 'test-index-failure',
+      );
+      final remote = _FakeRemote(failIndexing: true);
+      final repository = OfflineFirstServiceLogRepository(
+        local: local,
+        remote: remote,
+        store: store,
+        namespace: 'test-index-failure',
+      );
+
+      final modelId = await repository.createEquipmentModel(
+        const EquipmentModelDraft(
+          manufacturer: 'Philips',
+          model: 'Allura Xper FD10',
+          modality: 'Angiografia',
+        ),
+      );
+      await repository.createEquipment(
+        EquipmentDraft(
+          modelId: modelId,
+          serialNumber: 'SN-TESTE-003',
+          status: 'operational',
+        ),
+      );
+      final equipmentId = (await repository.fetchEquipments()).single.id;
+
+      await repository.saveCase(
+        ServiceCaseDraft(
+          equipmentId: equipmentId,
+          reportedFailure: 'Falha resolvida com indexação indisponível',
+          status: 'resolved',
+          operationalImpact: 'none',
+          solutionConfidence: 'confirmed',
+        ),
+      );
+
+      await repository.syncPendingChanges();
+
+      final status = await repository.fetchSyncStatus();
+      expect(status.pendingCount, 0);
+      expect(remote.indexedCaseIds, isEmpty);
+    },
+  );
+
+  test(
     'mantém a operação na fila quando o servidor informa conflito',
     () async {
       final store = MemorySnapshotStore();
@@ -117,9 +265,11 @@ void main() {
 }
 
 class _FakeRemote implements OfflineSyncRemote {
-  _FakeRemote({this.conflict = false});
+  _FakeRemote({this.conflict = false, this.failIndexing = false});
 
   final bool conflict;
+  final bool failIndexing;
+  final List<String> indexedCaseIds = [];
   RemoteSyncSnapshot snapshot = RemoteSyncSnapshot(
     equipment: const [],
     cases: const [],
@@ -148,6 +298,14 @@ class _FakeRemote implements OfflineSyncRemote {
   Future<List<SimilarCaseResult>> searchSimilarCases(
     SimilarCaseQuery query,
   ) async => const [];
+
+  @override
+  Future<void> indexResolvedCase(String serviceCaseId) async {
+    if (failIndexing) {
+      throw StateError('Falha simulada de indexação.');
+    }
+    indexedCaseIds.add(serviceCaseId);
+  }
 
   @override
   Future<void> signOut() async {}

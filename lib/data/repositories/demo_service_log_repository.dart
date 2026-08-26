@@ -7,6 +7,7 @@ import '../../core/storage/memory_snapshot_store.dart';
 
 import '../models/equipment.dart';
 import '../models/service_case.dart';
+import '../models/service_time_metrics.dart';
 import '../sync/sync_operation.dart';
 import '../sync/sync_queue_service.dart';
 import 'service_log_repository.dart';
@@ -659,6 +660,26 @@ class DemoServiceLogRepository
     final existing = existingIndex >= 0 ? _cases[existingIndex] : null;
     final resolved = draft.status == 'resolved';
 
+    if (resolved && draft.progressEntries.any((entry) => entry.isOpen)) {
+      throw StateError(
+        'Encerre a sessão de trabalho em aberto no diário antes de concluir o atendimento.',
+      );
+    }
+
+    final openedAt = existing?.openedAt ?? DateTime.now();
+    final closedAt = resolved ? DateTime.now() : null;
+
+    // Tempo técnico é somado das sessões do diário — aritmética pura, sem
+    // constante de calibração, então pode ser calculado offline.
+    final serviceMinutes = ServiceTimeMetrics.serviceMinutes(
+      draft.progressEntries,
+    );
+    // A indisponibilidade depende dos pesos por impacto operacional, cuja
+    // regra vive apenas no servidor (migration 0010). Preserva-se o último
+    // valor recalculado por ele; num atendimento ainda não sincronizado
+    // fica nulo, e a interface indica que será calculado na sincronização.
+    final downtimeMinutes = existing?.downtimeMinutes;
+
     final item = ServiceCase(
       id: draft.id ?? _nextId('case'),
       caseNumber: existing?.caseNumber ?? _caseSequence++,
@@ -666,8 +687,8 @@ class DemoServiceLogRepository
       equipmentLabel: '${equipment.displayName} · ${equipment.serialNumber}',
       status: draft.status,
       activityType: draft.activityType,
-      openedAt: existing?.openedAt ?? DateTime.now(),
-      closedAt: resolved ? DateTime.now() : null,
+      openedAt: openedAt,
+      closedAt: closedAt,
       reportedFailure: draft.reportedFailure.trim(),
       observedSymptoms: _blankToNull(draft.observedSymptoms),
       errorCode: _blankToNull(draft.errorCode),
@@ -681,8 +702,8 @@ class DemoServiceLogRepository
       finalEquipmentStatus: resolved ? draft.finalEquipmentStatus : null,
       solutionConfidence: draft.solutionConfidence,
       progressEntries: List.unmodifiable(draft.progressEntries),
-      downtimeMinutes: draft.downtimeMinutes,
-      serviceMinutes: draft.serviceMinutes,
+      downtimeMinutes: downtimeMinutes,
+      serviceMinutes: serviceMinutes,
       requiresFollowUp: draft.requiresFollowUp,
       followUpNotes: _blankToNull(draft.followUpNotes),
       safetyNotes: _blankToNull(draft.safetyNotes),
@@ -931,6 +952,7 @@ class DemoServiceLogRepository
           (entry) => {
             'id': entry.id,
             'occurred_at': entry.occurredAt.toUtc().toIso8601String(),
+            'ended_at': entry.endedAt?.toUtc().toIso8601String(),
             'description': entry.description,
           },
         )
@@ -1128,6 +1150,7 @@ class DemoServiceLogRepository
           (entry) => {
             'id': entry.id,
             'occurredAt': entry.occurredAt.toIso8601String(),
+            'endedAt': entry.endedAt?.toIso8601String(),
             'description': entry.description,
           },
         )
@@ -1168,6 +1191,9 @@ class DemoServiceLogRepository
             occurredAt:
                 DateTime.tryParse(entry['occurredAt'] as String? ?? '') ??
                 DateTime.now(),
+            endedAt: entry['endedAt'] == null
+                ? null
+                : DateTime.tryParse(entry['endedAt'] as String),
             description: entry['description'] as String? ?? '',
           ),
         )
