@@ -90,10 +90,50 @@ Armazena perfil em cache, última sincronização, último erro e metadados do r
 - `client_updated_at`: data informada pelo dispositivo;
 - `deleted_at`: preparação para exclusão lógica.
 
+## Tratamento de falhas no replay
+
+Cada operação da fila é enviada de forma independente. Uma operação recusada
+pelo servidor é registrada e mantida na fila, mas não interrompe o envio das
+seguintes nem impede o pull do snapshot remoto. O primeiro erro é preservado e
+relançado ao final, para que a interface continue reportando a falha.
+
+Antes desta mudança, o laço abortava na primeira recusa: uma única operação
+problemática bloqueava indefinidamente todo o restante da fila.
+
+## Conflitos por chave natural
+
+O `on conflict (id)` do corpo da RPC resolve apenas colisão de chave primária.
+Quando dois dispositivos criam offline a mesma entidade natural — o mesmo
+cliente, o mesmo número de série — cada um gera um UUID próprio, e a segunda
+gravação viola a restrição de chave natural.
+
+Essas violações passaram a ser capturadas e registradas em `sync_conflicts`,
+com a constraint violada em `server_payload`. O cliente as recebe como
+`status: 'conflict'`, o mesmo tratamento já usado para conflito de revisão.
+Antes, subiam como exceção genérica e o dispositivo retentava sem nunca
+progredir.
+
+A criação implícita de fabricante é a exceção: ela usa um "select, e se nulo
+insere" que não é atômico, então uma corrida entre dispositivos não indica
+divergência de dados — o vencedor gravou exatamente o que o perdedor queria.
+Nesse caso a operação é repetida uma vez, e a segunda tentativa reaproveita o
+registro já commitado.
+
+## Estrutura da RPC
+
+A lógica de `apply_offline_operation` vive em uma única definição,
+`apply_offline_operation_impl`. A função pública é um invólucro fino que
+delega a ela e traduz `unique_violation` em conflito registrado.
+
+Até a migration `0010`, cada alteração reescrevia por completo as cerca de 460
+linhas do corpo, e havia três cópias divergentes no repositório. A partir da
+`0011`, mudanças na lógica alteram o corpo e mudanças no tratamento de erro
+alteram o invólucro, sem que uma exija copiar a outra.
+
 ## Limites atuais
 
 - pull remoto completo, ainda não incremental;
-- conflitos são detectados, mas não resolvidos pela interface;
+- conflitos são detectados e isolados, mas não resolvidos pela interface;
 - exclusões e tombstones ainda não estão expostos no Flutter;
 - anexos não são armazenados offline;
 - a sessão autenticada ainda depende do comportamento de persistência do cliente Supabase; o perfil e a organização são armazenados localmente após o primeiro acesso online;

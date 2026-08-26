@@ -262,14 +262,77 @@ void main() {
       expect(status.conflictCount, 1);
     },
   );
+
+  test('uma operação recusada não impede as demais nem o pull', () async {
+    final store = MemorySnapshotStore();
+    final local = DemoServiceLogRepository.offlineMirror(
+      storage: store,
+      namespace: 'test-partial',
+    );
+    final remote = _FakeRemote();
+    final repository = OfflineFirstServiceLogRepository(
+      local: local,
+      remote: remote,
+      store: store,
+      namespace: 'test-partial',
+    );
+
+    // Duas entidades independentes na mesma fila. O identificador é gerado
+    // no dispositivo, então a recusa só pode ser configurada depois.
+    final recusado = await repository.createCustomer(
+      const CustomerDraft(name: 'Cliente recusado'),
+    );
+    final seguinte = await repository.createCustomer(
+      const CustomerDraft(name: 'Cliente seguinte'),
+    );
+    remote.rejectedEntityIds.add(recusado);
+
+    remote.snapshot = RemoteSyncSnapshot(
+      equipment: const [],
+      cases: const [],
+      catalog: EquipmentCatalog(
+        models: const [],
+        customers: [CustomerOption(id: seguinte, name: 'Cliente seguinte')],
+        sites: const [],
+      ),
+      revisions: {'customer:$seguinte': 1},
+      serverTime: DateTime.utc(2026, 8, 26),
+    );
+
+    // A falha continua sendo reportada à interface.
+    await expectLater(repository.syncPendingChanges(), throwsStateError);
+
+    // Mas a operação seguinte foi enviada mesmo assim: antes da correção o
+    // laço abortava na primeira recusa e esta nunca chegava ao servidor.
+    expect(remote.appliedEntityIds, contains(seguinte));
+
+    // E o pull ocorreu, apesar da recusa.
+    final status = await repository.fetchSyncStatus();
+    expect(status.lastSuccessfulSync, isNotNull);
+    expect(status.lastError, isNotNull);
+
+    // Só a operação recusada permanece na fila.
+    final pendentes = await store.pendingOperations('test-partial');
+    expect(pendentes.map((item) => item.entityId).toList(), [recusado]);
+  });
 }
 
 class _FakeRemote implements OfflineSyncRemote {
-  _FakeRemote({this.conflict = false, this.failIndexing = false});
+  _FakeRemote({
+    this.conflict = false,
+    this.failIndexing = false,
+    Set<String>? rejectedEntityIds,
+  }) : rejectedEntityIds = rejectedEntityIds ?? <String>{};
 
   final bool conflict;
   final bool failIndexing;
+
+  /// Entidades que o servidor recusa. Permite exercitar uma fila em que
+  /// parte das operações falha e parte deve seguir assim mesmo.
+  final Set<String> rejectedEntityIds;
+
   final List<String> indexedCaseIds = [];
+  final List<String> appliedEntityIds = [];
   RemoteSyncSnapshot snapshot = RemoteSyncSnapshot(
     equipment: const [],
     cases: const [],
@@ -280,6 +343,10 @@ class _FakeRemote implements OfflineSyncRemote {
 
   @override
   Future<SyncApplyResult> applyOperation(SyncOperation operation) async {
+    if (rejectedEntityIds.contains(operation.entityId)) {
+      throw StateError('Falha simulada para ${operation.entityId}.');
+    }
+    appliedEntityIds.add(operation.entityId);
     if (conflict) {
       return const SyncApplyResult(
         status: 'conflict',

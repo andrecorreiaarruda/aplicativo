@@ -132,6 +132,12 @@ class OfflineFirstServiceLogRepository
   }
 
   Future<void> _runSync() async {
+    // Cada operação é tentada de forma independente: uma entidade recusada
+    // pelo servidor não pode impedir o envio das demais nem bloquear o pull.
+    // O primeiro erro é preservado e relançado no fim, para a interface
+    // continuar reportando a falha ao usuário.
+    Object? firstError;
+    StackTrace? firstStackTrace;
     try {
       final pending = await _queue.pending();
       for (final operation in pending) {
@@ -168,11 +174,12 @@ class OfflineFirstServiceLogRepository
               // só porque a indexação semântica falhou.
             }
           }
-        } catch (error) {
+        } catch (error, stackTrace) {
           if (error is! SyncConflictException) {
             await _queue.markFailed(operation, error);
           }
-          rethrow;
+          firstError ??= error;
+          firstStackTrace ??= stackTrace;
         }
       }
 
@@ -188,6 +195,14 @@ class OfflineFirstServiceLogRepository
         'last_successful_sync',
         remoteSnapshot.serverTime.toIso8601String(),
       );
+      final failure = firstError;
+      if (failure != null) {
+        // O catch externo registra a falha em last_sync_error.
+        Error.throwWithStackTrace(
+          failure,
+          firstStackTrace ?? StackTrace.current,
+        );
+      }
       await _store.writeMetadata(_namespace, 'last_sync_error', '');
     } catch (error) {
       await _store.writeMetadata(
