@@ -26,6 +26,29 @@ flutter test
 flutter run -d linux
 ```
 
+## Instalação como aplicativo (Linux)
+
+Para usar sem terminal, com ícone no menu:
+
+```bash
+./scripts/install-linux.sh
+```
+
+O script compila em modo release, instala o bundle em
+`~/.local/share/orion-servicelog` e registra um lançador. Não requer root.
+
+As credenciais do Supabase são resolvidas em tempo de compilação por
+`String.fromEnvironment`, então o script passa `.env` ao build
+automaticamente. Sem esse arquivo o aplicativo é instalado sem backend e
+funciona apenas com dados locais — o script avisa quando isso acontece.
+
+```bash
+./scripts/install-linux.sh --uninstall   # remove, preservando os dados locais
+./scripts/install-linux.sh --no-build    # reinstala o bundle já compilado
+```
+
+Para atualizar depois de mudar o código, rode o script de novo.
+
 ## Backend
 
 Aplique todas as migrations, inclusive:
