@@ -16,6 +16,7 @@ abstract class ServiceLogRepository {
   Future<void> updateSite(String id, SiteDraft draft);
   Future<String> createCustomerSite(CustomerSiteDraft draft);
   Future<void> createEquipment(EquipmentDraft draft);
+  Future<void> updateEquipment(String id, EquipmentDraft draft);
   Future<void> saveCase(ServiceCaseDraft draft);
   Future<List<SimilarCaseResult>> searchSimilarCases(SimilarCaseQuery query);
   Future<void> signOut();

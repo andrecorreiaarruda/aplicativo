@@ -84,6 +84,10 @@ class OfflineFirstServiceLogRepository
       _local.createEquipment(draft);
 
   @override
+  Future<void> updateEquipment(String id, EquipmentDraft draft) =>
+      _local.updateEquipment(id, draft);
+
+  @override
   Future<void> saveCase(ServiceCaseDraft draft) => _local.saveCase(draft);
 
   @override

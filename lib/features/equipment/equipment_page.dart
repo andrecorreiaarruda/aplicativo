@@ -41,6 +41,14 @@ class _EquipmentPageState extends State<EquipmentPage> {
     );
   }
 
+  Future<void> _editEquipment(Equipment item) async {
+    await showResponsiveDialog<bool>(
+      context: context,
+      maxWidth: 760,
+      child: EquipmentForm(controller: widget.controller, equipment: item),
+    );
+  }
+
   Future<void> _newModel() async {
     await showResponsiveDialog<String>(
       context: context,
@@ -149,7 +157,10 @@ class _EquipmentPageState extends State<EquipmentPage> {
                     for (final item in equipment)
                       SizedBox(
                         width: width,
-                        child: _EquipmentCard(item: item),
+                        child: _EquipmentCard(
+                          item: item,
+                          onEdit: () => _editEquipment(item),
+                        ),
                       ),
                   ],
                 );
@@ -162,8 +173,9 @@ class _EquipmentPageState extends State<EquipmentPage> {
 }
 
 class _EquipmentCard extends StatelessWidget {
-  const _EquipmentCard({required this.item});
+  const _EquipmentCard({required this.item, required this.onEdit});
   final Equipment item;
+  final VoidCallback onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -206,6 +218,11 @@ class _EquipmentCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 StatusChip(value: item.status, compact: true),
+                IconButton(
+                  tooltip: 'Editar equipamento',
+                  onPressed: onEdit,
+                  icon: const Icon(Icons.edit_outlined),
+                ),
               ],
             ),
             const SizedBox(height: 18),

@@ -137,6 +137,16 @@ class ServiceLogController extends ChangeNotifier {
     });
   }
 
+  Future<bool> updateEquipment(String id, EquipmentDraft draft) async {
+    return _save(() async {
+      await repository.updateEquipment(id, draft);
+      equipment = await repository.fetchEquipments();
+      // A etiqueta do equipamento aparece nos atendimentos, então a
+      // listagem precisa ser recarregada junto.
+      cases = await repository.fetchCases();
+    });
+  }
+
   Future<bool> saveCase(ServiceCaseDraft draft) async {
     return _save(() async {
       await repository.saveCase(draft);

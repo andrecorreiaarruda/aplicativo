@@ -648,6 +648,72 @@ class DemoServiceLogRepository
   }
 
   @override
+  Future<void> updateEquipment(String id, EquipmentDraft draft) async {
+    await _ensureHydrated();
+    await _latency();
+    final index = _equipment.indexWhere((item) => item.id == id);
+    if (index < 0) throw StateError('Equipamento não encontrado.');
+
+    final serial = draft.serialNumber.trim();
+    final duplicate = _equipment.any(
+      (item) =>
+          item.id != id &&
+          item.serialNumber.toLowerCase() == serial.toLowerCase(),
+    );
+    if (duplicate) {
+      throw StateError('Já existe um equipamento com este número de série.');
+    }
+
+    final model = _models.firstWhere((item) => item.id == draft.modelId);
+    final matchingSites = _sites.where((item) => item.id == draft.siteId);
+    final site = matchingSites.isEmpty ? null : matchingSites.first;
+
+    _equipment[index] = Equipment(
+      id: id,
+      modelId: model.id,
+      manufacturer: model.manufacturer,
+      family: model.family,
+      model: model.model,
+      modality: model.modality,
+      serialNumber: serial,
+      customer: site?.customer ?? '',
+      site: site?.site ?? '',
+      siteId: site?.id,
+      softwareVersion: _blankToNull(draft.softwareVersion),
+      hardwareVersion: _blankToNull(draft.hardwareVersion),
+      status: draft.status,
+      notes: _blankToNull(draft.notes),
+    );
+
+    // Os atendimentos guardam uma etiqueta desnormalizada do equipamento
+    // para exibição. Sem atualizá-la, o histórico continuaria mostrando o
+    // modelo ou o número de série antigos depois da edição.
+    for (var i = 0; i < _cases.length; i++) {
+      final item = _cases[i];
+      if (item.equipmentId != id) continue;
+      _cases[i] = item.copyWith(
+        equipmentLabel: '${model.manufacturer} ${model.model} · $serial',
+      );
+    }
+
+    await _persist();
+    await _journal(
+      entityType: 'equipment',
+      entityId: id,
+      payload: {
+        'id': id,
+        'equipment_model_id': draft.modelId,
+        'site_id': draft.siteId,
+        'serial_number': serial,
+        'software_version': _blankToNull(draft.softwareVersion),
+        'hardware_version': _blankToNull(draft.hardwareVersion),
+        'status': draft.status,
+        'notes': _blankToNull(draft.notes),
+      },
+    );
+  }
+
+  @override
   Future<void> saveCase(ServiceCaseDraft draft) async {
     await _ensureHydrated();
     await _latency();

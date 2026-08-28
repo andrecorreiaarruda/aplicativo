@@ -391,6 +391,22 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
   }
 
   @override
+  Future<void> updateEquipment(String id, EquipmentDraft draft) async {
+    await _client
+        .from('equipments')
+        .update({
+          'equipment_model_id': draft.modelId,
+          'site_id': draft.siteId,
+          'serial_number': draft.serialNumber.trim(),
+          'software_version': _blankToNull(draft.softwareVersion),
+          'hardware_version': _blankToNull(draft.hardwareVersion),
+          'status': draft.status,
+          'notes': _blankToNull(draft.notes),
+        })
+        .eq('id', id);
+  }
+
+  @override
   Future<void> saveCase(ServiceCaseDraft draft) async {
     final organizationId = await _organizationId();
     final resolved = draft.status == 'resolved';

@@ -231,6 +231,72 @@ void main() {
     },
   );
 
+  test('edição de equipamento atualiza a etiqueta no histórico', () async {
+    final repository = DemoServiceLogRepository.seeded(
+      storage: MemorySnapshotStore(),
+    );
+
+    final equipamentos = await repository.fetchEquipments();
+    final alvo = equipamentos.first;
+    final atendimentos = await repository.fetchCases();
+    final vinculado = atendimentos.firstWhere(
+      (item) => item.equipmentId == alvo.id,
+    );
+    // Antes da edição, a etiqueta carrega o número de série original.
+    expect(vinculado.equipmentLabel, contains(alvo.serialNumber));
+
+    await repository.updateEquipment(
+      alvo.id,
+      EquipmentDraft(
+        modelId: alvo.modelId,
+        serialNumber: 'SERIE-TROCADA-001',
+        siteId: alvo.siteId,
+        status: 'maintenance',
+        notes: 'Editado no teste',
+      ),
+    );
+
+    final editado = (await repository.fetchEquipments()).firstWhere(
+      (item) => item.id == alvo.id,
+    );
+    expect(editado.serialNumber, 'SERIE-TROCADA-001');
+    expect(editado.status, 'maintenance');
+    expect(editado.notes, 'Editado no teste');
+
+    // O atendimento vinculado precisa refletir o novo número de série,
+    // porque a etiqueta é desnormalizada para exibição.
+    final apos = (await repository.fetchCases()).firstWhere(
+      (item) => item.id == vinculado.id,
+    );
+    expect(apos.equipmentLabel, contains('SERIE-TROCADA-001'));
+  });
+
+  test(
+    'edição recusa número de série já usado por outro equipamento',
+    () async {
+      final repository = DemoServiceLogRepository.seeded(
+        storage: MemorySnapshotStore(),
+      );
+
+      final equipamentos = await repository.fetchEquipments();
+      final primeiro = equipamentos[0];
+      final segundo = equipamentos[1];
+
+      await expectLater(
+        repository.updateEquipment(
+          primeiro.id,
+          EquipmentDraft(
+            modelId: primeiro.modelId,
+            serialNumber: segundo.serialNumber,
+            siteId: primeiro.siteId,
+            status: primeiro.status,
+          ),
+        ),
+        throwsStateError,
+      );
+    },
+  );
+
   test('estado local é reidratado pelo armazenamento persistente', () async {
     final store = MemorySnapshotStore();
     final firstRepository = DemoServiceLogRepository.seeded(

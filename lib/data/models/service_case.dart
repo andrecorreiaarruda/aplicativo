@@ -119,6 +119,38 @@ class ServiceCase {
   final String? followUpNotes;
   final String? safetyNotes;
 
+  /// Reconstrói o atendimento trocando apenas a etiqueta do equipamento.
+  /// Usado quando o equipamento é editado: a etiqueta é desnormalizada
+  /// para exibição e ficaria desatualizada no histórico sem isto.
+  ServiceCase copyWith({String? equipmentLabel}) => ServiceCase(
+    id: id,
+    caseNumber: caseNumber,
+    equipmentId: equipmentId,
+    equipmentLabel: equipmentLabel ?? this.equipmentLabel,
+    status: status,
+    activityType: activityType,
+    openedAt: openedAt,
+    closedAt: closedAt,
+    reportedFailure: reportedFailure,
+    operationalImpact: operationalImpact,
+    solutionConfidence: solutionConfidence,
+    progressEntries: progressEntries,
+    observedSymptoms: observedSymptoms,
+    errorCode: errorCode,
+    errorMessage: errorMessage,
+    subsystem: subsystem,
+    measurements: measurements,
+    rootCause: rootCause,
+    solutionDetails: solutionDetails,
+    validationResult: validationResult,
+    finalEquipmentStatus: finalEquipmentStatus,
+    downtimeMinutes: downtimeMinutes,
+    serviceMinutes: serviceMinutes,
+    requiresFollowUp: requiresFollowUp,
+    followUpNotes: followUpNotes,
+    safetyNotes: safetyNotes,
+  );
+
   bool get isResolved => status == 'resolved';
   String get activityLabel => ServiceActivityType.label(activityType);
 

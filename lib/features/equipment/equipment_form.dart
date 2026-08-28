@@ -7,9 +7,15 @@ import '../../shared/widgets/responsive_dialog.dart';
 import '../shell/service_log_controller.dart';
 
 class EquipmentForm extends StatefulWidget {
-  const EquipmentForm({super.key, required this.controller});
+  const EquipmentForm({super.key, required this.controller, this.equipment});
 
   final ServiceLogController controller;
+
+  /// Quando informado, o formulário edita este equipamento em vez de
+  /// cadastrar um novo.
+  final Equipment? equipment;
+
+  bool get isEditing => equipment != null;
 
   @override
   State<EquipmentForm> createState() => _EquipmentFormState();
@@ -28,6 +34,20 @@ class _EquipmentFormState extends State<EquipmentForm> {
   String? _modelId;
   String? _siteId;
   String _status = 'operational';
+
+  @override
+  void initState() {
+    super.initState();
+    final existente = widget.equipment;
+    if (existente == null) return;
+    _serial.text = existente.serialNumber;
+    _software.text = existente.softwareVersion ?? '';
+    _hardware.text = existente.hardwareVersion ?? '';
+    _notes.text = existente.notes ?? '';
+    _modelId = existente.modelId;
+    _siteId = existente.siteId;
+    _status = existente.status;
+  }
 
   @override
   void dispose() {
@@ -222,17 +242,19 @@ class _EquipmentFormState extends State<EquipmentForm> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
-    final ok = await widget.controller.createEquipment(
-      EquipmentDraft(
-        modelId: _modelId!,
-        serialNumber: _serial.text,
-        siteId: _siteId,
-        softwareVersion: _software.text,
-        hardwareVersion: _hardware.text,
-        status: _status,
-        notes: _notes.text,
-      ),
+    final draft = EquipmentDraft(
+      modelId: _modelId!,
+      serialNumber: _serial.text,
+      siteId: _siteId,
+      softwareVersion: _software.text,
+      hardwareVersion: _hardware.text,
+      status: _status,
+      notes: _notes.text,
     );
+    final existente = widget.equipment;
+    final ok = existente == null
+        ? await widget.controller.createEquipment(draft)
+        : await widget.controller.updateEquipment(existente.id, draft);
     if (ok && mounted) Navigator.of(context).pop(true);
   }
 
@@ -241,7 +263,9 @@ class _EquipmentFormState extends State<EquipmentForm> {
     return Column(
       children: [
         _DialogHeader(
-          title: 'Cadastrar equipamento',
+          title: widget.isEditing
+              ? 'Editar equipamento'
+              : 'Cadastrar equipamento',
           onClose: () => Navigator.of(context).pop(),
         ),
         const Divider(height: 1),
