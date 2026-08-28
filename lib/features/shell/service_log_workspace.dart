@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/orion_theme.dart';
 import '../../data/repositories/service_log_repository.dart';
 import '../../shared/widgets/orion_brand.dart';
+import '../archive/archived_page.dart';
 import '../assistant/assistant_page.dart';
 import '../cases/cases_page.dart';
 import '../customers/customers_page.dart';
@@ -76,6 +77,11 @@ class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace>
       icon: Icons.auto_awesome_outlined,
       selectedIcon: Icons.auto_awesome_rounded,
     ),
+    _Destination(
+      label: 'Arquivados',
+      icon: Icons.inventory_2_outlined,
+      selectedIcon: Icons.inventory_2_rounded,
+    ),
   ];
 
   @override
@@ -132,6 +138,11 @@ class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace>
       case 4:
         return AssistantPage(
           key: const PageStorageKey('assistant'),
+          controller: _controller,
+        );
+      case 5:
+        return ArchivedPage(
+          key: const PageStorageKey('archived'),
           controller: _controller,
         );
       default:

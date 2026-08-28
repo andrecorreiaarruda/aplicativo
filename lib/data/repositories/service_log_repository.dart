@@ -19,6 +19,20 @@ abstract class ServiceLogRepository {
   Future<void> updateEquipment(String id, EquipmentDraft draft);
   Future<void> saveCase(ServiceCaseDraft draft);
   Future<List<SimilarCaseResult>> searchSimilarCases(SimilarCaseQuery query);
+
+  /// Arquivamento. O registro sai das listagens mas permanece no banco,
+  /// preservando o histórico técnico vinculado a ele. Lança [StateError]
+  /// com a contagem de dependentes quando o arquivamento é recusado.
+  Future<void> archiveCustomer(String id);
+  Future<void> archiveEquipment(String id);
+  Future<void> archiveCase(String id);
+
+  Future<void> restoreCustomer(String id);
+  Future<void> restoreEquipment(String id);
+  Future<void> restoreCase(String id);
+
+  Future<ArchivedRecords> fetchArchived();
+
   Future<void> signOut();
 }
 

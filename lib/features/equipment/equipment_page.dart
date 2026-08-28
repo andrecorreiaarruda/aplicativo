@@ -6,6 +6,7 @@ import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/responsive_dialog.dart';
 import '../../shared/widgets/section_header.dart';
 import '../../shared/widgets/status_chip.dart';
+import '../../shared/widgets/archive_confirmation.dart';
 import '../shell/service_log_controller.dart';
 import 'equipment_form.dart';
 
@@ -47,6 +48,27 @@ class _EquipmentPageState extends State<EquipmentPage> {
       maxWidth: 760,
       child: EquipmentForm(controller: widget.controller, equipment: item),
     );
+  }
+
+  Future<void> _archiveEquipment(Equipment item) async {
+    final confirmado = await confirmArchive(
+      context,
+      tipo: 'equipamento',
+      nome: item.displayName,
+    );
+    if (!confirmado || !mounted) return;
+    final ok = await widget.controller.archiveEquipment(item.id);
+    if (!mounted) return;
+    if (!ok) {
+      // A recusa por dependências chega aqui como mensagem do controller.
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.controller.errorMessage ?? 'Não foi possível arquivar.',
+          ),
+        ),
+      );
+    }
   }
 
   Future<void> _newModel() async {
@@ -160,6 +182,7 @@ class _EquipmentPageState extends State<EquipmentPage> {
                         child: _EquipmentCard(
                           item: item,
                           onEdit: () => _editEquipment(item),
+                          onArchive: () => _archiveEquipment(item),
                         ),
                       ),
                   ],
@@ -173,9 +196,14 @@ class _EquipmentPageState extends State<EquipmentPage> {
 }
 
 class _EquipmentCard extends StatelessWidget {
-  const _EquipmentCard({required this.item, required this.onEdit});
+  const _EquipmentCard({
+    required this.item,
+    required this.onEdit,
+    required this.onArchive,
+  });
   final Equipment item;
   final VoidCallback onEdit;
+  final VoidCallback onArchive;
 
   @override
   Widget build(BuildContext context) {
@@ -222,6 +250,11 @@ class _EquipmentCard extends StatelessWidget {
                   tooltip: 'Editar equipamento',
                   onPressed: onEdit,
                   icon: const Icon(Icons.edit_outlined),
+                ),
+                IconButton(
+                  tooltip: 'Arquivar equipamento',
+                  onPressed: onArchive,
+                  icon: const Icon(Icons.inventory_2_outlined),
                 ),
               ],
             ),

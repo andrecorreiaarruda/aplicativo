@@ -30,5 +30,10 @@ abstract class OfflineSyncRemote {
   /// confirmada pelo servidor antes desta chamada.
   Future<void> indexResolvedCase(String serviceCaseId);
 
+  /// Registros arquivados no servidor. O snapshot do pull descarta
+  /// `deleted_at` preenchido, então a tela de restauração consulta
+  /// esta lista à parte.
+  Future<ArchivedRecords> fetchArchived();
+
   Future<void> signOut();
 }

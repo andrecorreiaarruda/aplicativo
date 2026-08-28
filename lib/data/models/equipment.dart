@@ -14,6 +14,7 @@ class Equipment {
     this.softwareVersion,
     this.hardwareVersion,
     this.notes,
+    this.archivedAt,
   });
 
   final String id;
@@ -30,6 +31,13 @@ class Equipment {
   final String? softwareVersion;
   final String? hardwareVersion;
   final String? notes;
+
+  /// Momento em que o equipamento foi arquivado. Nulo enquanto ativo.
+  /// Corresponde a `deleted_at` no banco: o registro continua existindo
+  /// e preserva o histórico de atendimentos vinculado a ele.
+  final DateTime? archivedAt;
+
+  bool get isArchived => archivedAt != null;
 
   String get displayName => '$manufacturer $model';
   String get locationLabel =>
@@ -146,6 +154,7 @@ class CustomerOption {
     this.city,
     this.state,
     this.notes,
+    this.archivedAt,
   });
 
   final String id;
@@ -158,6 +167,11 @@ class CustomerOption {
   final String? city;
   final String? state;
   final String? notes;
+
+  /// Ver [Equipment.archivedAt].
+  final DateTime? archivedAt;
+
+  bool get isArchived => archivedAt != null;
 
   String get locationLabel => [
     city,
@@ -279,4 +293,44 @@ class CustomerSiteDraft {
   final String? state;
   final String? customerNotes;
   final String? siteNotes;
+}
+
+/// Conjunto de registros arquivados, exibido na tela de restauração.
+class ArchivedRecords {
+  const ArchivedRecords({
+    this.customers = const [],
+    this.equipment = const [],
+    this.cases = const [],
+  });
+
+  final List<CustomerOption> customers;
+  final List<Equipment> equipment;
+  final List<ServiceCaseSummary> cases;
+
+  static const empty = ArchivedRecords();
+
+  bool get isEmpty => customers.isEmpty && equipment.isEmpty && cases.isEmpty;
+
+  int get total => customers.length + equipment.length + cases.length;
+}
+
+/// Resumo de atendimento arquivado. A tela de restauração não precisa do
+/// atendimento inteiro, e trazê-lo completo obrigaria o repositório
+/// Supabase a repetir todos os relacionamentos da consulta principal.
+class ServiceCaseSummary {
+  const ServiceCaseSummary({
+    required this.id,
+    required this.caseNumber,
+    required this.equipmentLabel,
+    required this.reportedFailure,
+    required this.openedAt,
+    this.archivedAt,
+  });
+
+  final String id;
+  final int caseNumber;
+  final String equipmentLabel;
+  final String reportedFailure;
+  final DateTime openedAt;
+  final DateTime? archivedAt;
 }

@@ -155,6 +155,55 @@ class ServiceLogController extends ChangeNotifier {
     });
   }
 
+  /// Arquiva o registro. Devolve `false` quando o arquivamento é recusado
+  /// por dependências — o motivo fica em [errorMessage], já formatado com
+  /// as contagens pelo repositório.
+  Future<bool> archiveCustomer(String id) => _save(() async {
+    await repository.archiveCustomer(id);
+    await _reloadAfterArchive();
+  });
+
+  Future<bool> archiveEquipment(String id) => _save(() async {
+    await repository.archiveEquipment(id);
+    await _reloadAfterArchive();
+  });
+
+  Future<bool> archiveCase(String id) => _save(() async {
+    await repository.archiveCase(id);
+    await _reloadAfterArchive();
+  });
+
+  Future<bool> restoreCustomer(String id) => _save(() async {
+    await repository.restoreCustomer(id);
+    await _reloadAfterArchive();
+  });
+
+  Future<bool> restoreEquipment(String id) => _save(() async {
+    await repository.restoreEquipment(id);
+    await _reloadAfterArchive();
+  });
+
+  Future<bool> restoreCase(String id) => _save(() async {
+    await repository.restoreCase(id);
+    await _reloadAfterArchive();
+  });
+
+  Future<ArchivedRecords> fetchArchived() => repository.fetchArchived();
+
+  /// Arquivar ou restaurar altera as três listagens de uma vez: um cliente
+  /// arquivado some do catálogo, e o equipamento dele deixa de ser
+  /// selecionável em novos atendimentos.
+  Future<void> _reloadAfterArchive() async {
+    final values = await Future.wait<dynamic>([
+      repository.fetchEquipments(),
+      repository.fetchCases(),
+      repository.fetchEquipmentCatalog(),
+    ]);
+    equipment = values[0] as List<Equipment>;
+    cases = values[1] as List<ServiceCase>;
+    catalog = values[2] as EquipmentCatalog;
+  }
+
   Future<List<SimilarCaseResult>> search(SimilarCaseQuery query) async {
     errorMessage = null;
     notifyListeners();

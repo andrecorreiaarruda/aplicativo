@@ -7,6 +7,7 @@ import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/responsive_dialog.dart';
 import '../../shared/widgets/section_header.dart';
 import '../../shared/widgets/status_chip.dart';
+import '../../shared/widgets/archive_confirmation.dart';
 import '../shell/service_log_controller.dart';
 import 'case_form.dart';
 
@@ -28,6 +29,26 @@ class _CasesPageState extends State<CasesPage> {
   void dispose() {
     _search.dispose();
     super.dispose();
+  }
+
+  Future<void> _archiveCase(ServiceCase item) async {
+    final confirmado = await confirmArchive(
+      context,
+      tipo: 'atendimento',
+      nome: 'OS ${item.caseNumber} · ${item.reportedFailure}',
+    );
+    if (!confirmado || !mounted) return;
+    final ok = await widget.controller.archiveCase(item.id);
+    if (!mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.controller.errorMessage ?? 'Não foi possível arquivar.',
+          ),
+        ),
+      );
+    }
   }
 
   Future<void> openForm([ServiceCase? item]) async {
@@ -192,7 +213,11 @@ class _CasesPageState extends State<CasesPage> {
             ...items.map(
               (item) => Padding(
                 padding: const EdgeInsets.only(bottom: 12),
-                child: _CaseCard(item: item, onTap: () => openForm(item)),
+                child: _CaseCard(
+                  item: item,
+                  onTap: () => openForm(item),
+                  onArchive: () => _archiveCase(item),
+                ),
               ),
             ),
         ],
@@ -202,9 +227,14 @@ class _CasesPageState extends State<CasesPage> {
 }
 
 class _CaseCard extends StatelessWidget {
-  const _CaseCard({required this.item, required this.onTap});
+  const _CaseCard({
+    required this.item,
+    required this.onTap,
+    required this.onArchive,
+  });
   final ServiceCase item;
   final VoidCallback onTap;
+  final VoidCallback onArchive;
 
   @override
   Widget build(BuildContext context) {
@@ -241,6 +271,12 @@ class _CaseCard extends StatelessWidget {
                         _TechnicalTag(item.errorCode!),
                       if (item.subsystem?.isNotEmpty == true)
                         _TechnicalTag(item.subsystem!),
+                      IconButton(
+                        tooltip: 'Arquivar atendimento',
+                        onPressed: onArchive,
+                        visualDensity: VisualDensity.compact,
+                        icon: const Icon(Icons.inventory_2_outlined, size: 18),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 10),

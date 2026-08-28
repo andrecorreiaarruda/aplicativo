@@ -375,5 +375,8 @@ class _FakeRemote implements OfflineSyncRemote {
   }
 
   @override
+  Future<ArchivedRecords> fetchArchived() async => ArchivedRecords.empty;
+
+  @override
   Future<void> signOut() async {}
 }

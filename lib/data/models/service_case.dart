@@ -90,6 +90,7 @@ class ServiceCase {
     this.requiresFollowUp = false,
     this.followUpNotes,
     this.safetyNotes,
+    this.archivedAt,
   });
 
   final String id;
@@ -119,10 +120,23 @@ class ServiceCase {
   final String? followUpNotes;
   final String? safetyNotes;
 
+  /// Ver [Equipment.archivedAt]. Um atendimento arquivado sai das
+  /// listagens e dos indicadores, mas continua no banco.
+  final DateTime? archivedAt;
+
+  bool get isArchived => archivedAt != null;
+
   /// Reconstrói o atendimento trocando apenas a etiqueta do equipamento.
   /// Usado quando o equipamento é editado: a etiqueta é desnormalizada
   /// para exibição e ficaria desatualizada no histórico sem isto.
-  ServiceCase copyWith({String? equipmentLabel}) => ServiceCase(
+  /// [unarchive] existe porque `archivedAt: null` seria indistinguível de
+  /// "não informado" no operador `??`, e a restauração precisa justamente
+  /// zerar o campo.
+  ServiceCase copyWith({
+    String? equipmentLabel,
+    DateTime? archivedAt,
+    bool unarchive = false,
+  }) => ServiceCase(
     id: id,
     caseNumber: caseNumber,
     equipmentId: equipmentId,
@@ -149,6 +163,7 @@ class ServiceCase {
     requiresFollowUp: requiresFollowUp,
     followUpNotes: followUpNotes,
     safetyNotes: safetyNotes,
+    archivedAt: unarchive ? null : (archivedAt ?? this.archivedAt),
   );
 
   bool get isResolved => status == 'resolved';

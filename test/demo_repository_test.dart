@@ -297,6 +297,115 @@ void main() {
     },
   );
 
+  test('arquivar cliente é bloqueado enquanto houver histórico', () async {
+    final repository = DemoServiceLogRepository.seeded(
+      storage: MemorySnapshotStore(),
+    );
+    final catalogo = await repository.fetchEquipmentCatalog();
+    final cliente = catalogo.customers.first;
+
+    // O cliente semeado tem equipamentos e atendimentos: deve recusar.
+    await expectLater(
+      repository.archiveCustomer(cliente.id),
+      throwsA(
+        isA<StateError>().having(
+          (e) => e.message,
+          'mensagem',
+          allOf(contains('equipamento'), contains('atendimento')),
+        ),
+      ),
+    );
+
+    // E continua visível, porque nada foi arquivado.
+    final depois = await repository.fetchEquipmentCatalog();
+    expect(depois.customers.any((item) => item.id == cliente.id), isTrue);
+  });
+
+  test('arquivar segue a ordem atendimento, equipamento, cliente', () async {
+    final repository = DemoServiceLogRepository.seeded(
+      storage: MemorySnapshotStore(),
+    );
+
+    final equipamento = (await repository.fetchEquipments()).first;
+    final atendimentos = (await repository.fetchCases())
+        .where((item) => item.equipmentId == equipamento.id)
+        .toList();
+    expect(atendimentos, isNotEmpty);
+
+    // Equipamento com atendimento é recusado.
+    await expectLater(
+      repository.archiveEquipment(equipamento.id),
+      throwsStateError,
+    );
+
+    // Atendimento é folha: sempre arquivável.
+    for (final item in atendimentos) {
+      await repository.archiveCase(item.id);
+    }
+    expect(
+      (await repository.fetchCases()).any(
+        (item) => item.id == atendimentos.first.id,
+      ),
+      isFalse,
+    );
+
+    // Sem atendimentos, o equipamento libera.
+    await repository.archiveEquipment(equipamento.id);
+    final ativos = await repository.fetchEquipments();
+    expect(ativos.any((item) => item.id == equipamento.id), isFalse);
+
+    // Arquivar não apaga: o registro aparece na lista de arquivados.
+    final arquivados = await repository.fetchArchived();
+    expect(
+      arquivados.equipment.any((item) => item.id == equipamento.id),
+      isTrue,
+    );
+    expect(arquivados.cases, hasLength(atendimentos.length));
+  });
+
+  test('restaurar devolve o registro às listagens', () async {
+    final repository = DemoServiceLogRepository.seeded(
+      storage: MemorySnapshotStore(),
+    );
+    final atendimento = (await repository.fetchCases()).first;
+
+    await repository.archiveCase(atendimento.id);
+    expect(
+      (await repository.fetchCases()).any((item) => item.id == atendimento.id),
+      isFalse,
+    );
+
+    await repository.restoreCase(atendimento.id);
+    expect(
+      (await repository.fetchCases()).any((item) => item.id == atendimento.id),
+      isTrue,
+    );
+    expect((await repository.fetchArchived()).cases, isEmpty);
+  });
+
+  test('arquivamento sobrevive à reabertura do aplicativo', () async {
+    final storage = MemorySnapshotStore();
+    final primeira = DemoServiceLogRepository.seeded(
+      storage: storage,
+      namespace: 'arquivo-persistente',
+      journalChanges: true,
+    );
+    final atendimento = (await primeira.fetchCases()).first;
+    await primeira.archiveCase(atendimento.id);
+
+    // Mesmo armazenamento, instância nova: simula reabrir o aplicativo.
+    final segunda = DemoServiceLogRepository.seeded(
+      storage: storage,
+      namespace: 'arquivo-persistente',
+      journalChanges: true,
+    );
+    expect(
+      (await segunda.fetchCases()).any((item) => item.id == atendimento.id),
+      isFalse,
+    );
+    expect((await segunda.fetchArchived()).cases, hasLength(1));
+  });
+
   test('estado local é reidratado pelo armazenamento persistente', () async {
     final store = MemorySnapshotStore();
     final firstRepository = DemoServiceLogRepository.seeded(

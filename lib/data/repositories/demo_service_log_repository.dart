@@ -315,14 +315,15 @@ class DemoServiceLogRepository
   Future<List<Equipment>> fetchEquipments() async {
     await _ensureHydrated();
     await _latency();
-    return List.unmodifiable(_equipment);
+    // Arquivados continuam no armazenamento, mas fora das listagens.
+    return List.unmodifiable(_equipment.where((item) => !item.isArchived));
   }
 
   @override
   Future<List<ServiceCase>> fetchCases() async {
     await _ensureHydrated();
     await _latency();
-    final result = [..._cases]
+    final result = _cases.where((item) => !item.isArchived).toList()
       ..sort((a, b) => b.openedAt.compareTo(a.openedAt));
     return List.unmodifiable(result);
   }
@@ -331,10 +332,17 @@ class DemoServiceLogRepository
   Future<EquipmentCatalog> fetchEquipmentCatalog() async {
     await _ensureHydrated();
     await _latency();
+    final ativos = _customers.where((item) => !item.isArchived).toList();
+    final idsAtivos = ativos.map((item) => item.id).toSet();
     return EquipmentCatalog(
       models: List.unmodifiable(_models),
-      customers: List.unmodifiable(_customers),
-      sites: List.unmodifiable(_sites),
+      customers: List.unmodifiable(ativos),
+      // Um local de cliente arquivado não deve aparecer para seleção,
+      // senão seria possível cadastrar equipamento sob um cliente que
+      // não está mais em uso.
+      sites: List.unmodifiable(
+        _sites.where((item) => idsAtivos.contains(item.customerId)),
+      ),
     );
   }
 
@@ -713,6 +721,232 @@ class DemoServiceLogRepository
     );
   }
 
+  // ---------------------------------------------------------------------
+  // Arquivamento
+  // ---------------------------------------------------------------------
+  // O registro recebe `archivedAt` e some das listagens, mas continua no
+  // armazenamento. Arquivar é recusado enquanto houver histórico
+  // dependente: num registro de serviço técnico, o histórico é o ativo
+  // principal e não pode ser escondido por um clique em outro cadastro.
+
+  /// Ids dos equipamentos de um cliente, através dos locais dele.
+  List<Equipment> _equipmentOfCustomer(String customerId) {
+    final siteIds = _sites
+        .where((item) => item.customerId == customerId)
+        .map((item) => item.id)
+        .toSet();
+    return _equipment
+        .where((item) => !item.isArchived && siteIds.contains(item.siteId))
+        .toList(growable: false);
+  }
+
+  List<ServiceCase> _casesOfEquipment(String equipmentId) => _cases
+      .where((item) => !item.isArchived && item.equipmentId == equipmentId)
+      .toList(growable: false);
+
+  static String _plural(int count, String singular, String plural) =>
+      count == 1 ? '1 $singular' : '$count $plural';
+
+  @override
+  Future<void> archiveCustomer(String id) async {
+    await _ensureHydrated();
+    await _latency();
+    final index = _customers.indexWhere((item) => item.id == id);
+    if (index < 0) throw StateError('Cliente não encontrado.');
+    if (_customers[index].isArchived) return;
+
+    final equipamentos = _equipmentOfCustomer(id);
+    final atendimentos = equipamentos
+        .expand((item) => _casesOfEquipment(item.id))
+        .length;
+    if (equipamentos.isNotEmpty || atendimentos > 0) {
+      final partes = <String>[
+        if (equipamentos.isNotEmpty)
+          _plural(equipamentos.length, 'equipamento', 'equipamentos'),
+        if (atendimentos > 0)
+          _plural(atendimentos, 'atendimento', 'atendimentos'),
+      ];
+      throw StateError(
+        'Não é possível arquivar: ${partes.join(' e ')} ainda dependem '
+        'deste cliente. Arquive-os primeiro.',
+      );
+    }
+
+    final atual = _customers[index];
+    _customers[index] = CustomerOption(
+      id: atual.id,
+      name: atual.name,
+      taxId: atual.taxId,
+      contactName: atual.contactName,
+      email: atual.email,
+      phone: atual.phone,
+      addressLine: atual.addressLine,
+      city: atual.city,
+      state: atual.state,
+      notes: atual.notes,
+      archivedAt: DateTime.now(),
+    );
+    await _persist();
+    await _journal(
+      entityType: 'customer',
+      entityId: id,
+      operation: 'archive',
+      payload: {'id': id},
+    );
+  }
+
+  @override
+  Future<void> archiveEquipment(String id) async {
+    await _ensureHydrated();
+    await _latency();
+    final index = _equipment.indexWhere((item) => item.id == id);
+    if (index < 0) throw StateError('Equipamento não encontrado.');
+    if (_equipment[index].isArchived) return;
+
+    final atendimentos = _casesOfEquipment(id);
+    if (atendimentos.isNotEmpty) {
+      throw StateError(
+        'Não é possível arquivar: '
+        '${_plural(atendimentos.length, 'atendimento depende', 'atendimentos dependem')} '
+        'deste equipamento. Arquive-os primeiro.',
+      );
+    }
+
+    _equipment[index] = _withArchivedAt(_equipment[index], DateTime.now());
+    await _persist();
+    await _journal(
+      entityType: 'equipment',
+      entityId: id,
+      operation: 'archive',
+      payload: {'id': id},
+    );
+  }
+
+  @override
+  Future<void> archiveCase(String id) async {
+    await _ensureHydrated();
+    await _latency();
+    final index = _cases.indexWhere((item) => item.id == id);
+    if (index < 0) throw StateError('Atendimento não encontrado.');
+    if (_cases[index].isArchived) return;
+
+    // Atendimento é folha: nada depende dele, então nunca é bloqueado.
+    _cases[index] = _cases[index].copyWith(archivedAt: DateTime.now());
+    await _persist();
+    await _journal(
+      entityType: 'service_case',
+      entityId: id,
+      operation: 'archive',
+      payload: {'id': id},
+    );
+  }
+
+  @override
+  Future<void> restoreCustomer(String id) async {
+    await _ensureHydrated();
+    await _latency();
+    final index = _customers.indexWhere((item) => item.id == id);
+    if (index < 0) throw StateError('Cliente não encontrado.');
+    final atual = _customers[index];
+    _customers[index] = CustomerOption(
+      id: atual.id,
+      name: atual.name,
+      taxId: atual.taxId,
+      contactName: atual.contactName,
+      email: atual.email,
+      phone: atual.phone,
+      addressLine: atual.addressLine,
+      city: atual.city,
+      state: atual.state,
+      notes: atual.notes,
+    );
+    await _persist();
+    await _journal(
+      entityType: 'customer',
+      entityId: id,
+      operation: 'restore',
+      payload: {'id': id},
+    );
+  }
+
+  @override
+  Future<void> restoreEquipment(String id) async {
+    await _ensureHydrated();
+    await _latency();
+    final index = _equipment.indexWhere((item) => item.id == id);
+    if (index < 0) throw StateError('Equipamento não encontrado.');
+    _equipment[index] = _withArchivedAt(_equipment[index], null);
+    await _persist();
+    await _journal(
+      entityType: 'equipment',
+      entityId: id,
+      operation: 'restore',
+      payload: {'id': id},
+    );
+  }
+
+  @override
+  Future<void> restoreCase(String id) async {
+    await _ensureHydrated();
+    await _latency();
+    final index = _cases.indexWhere((item) => item.id == id);
+    if (index < 0) throw StateError('Atendimento não encontrado.');
+    _cases[index] = _cases[index].copyWith(unarchive: true);
+    await _persist();
+    await _journal(
+      entityType: 'service_case',
+      entityId: id,
+      operation: 'restore',
+      payload: {'id': id},
+    );
+  }
+
+  @override
+  Future<ArchivedRecords> fetchArchived() async {
+    await _ensureHydrated();
+    return ArchivedRecords(
+      customers: _customers.where((item) => item.isArchived).toList(),
+      equipment: _equipment.where((item) => item.isArchived).toList(),
+      cases: _cases
+          .where((item) => item.isArchived)
+          .map(
+            (item) => ServiceCaseSummary(
+              id: item.id,
+              caseNumber: item.caseNumber,
+              equipmentLabel: item.equipmentLabel,
+              reportedFailure: item.reportedFailure,
+              openedAt: item.openedAt,
+              archivedAt: item.archivedAt,
+            ),
+          )
+          .toList(),
+    );
+  }
+
+  static DateTime? _parseIso(Object? value) {
+    if (value is! String || value.isEmpty) return null;
+    return DateTime.tryParse(value);
+  }
+
+  static Equipment _withArchivedAt(Equipment item, DateTime? value) =>
+      Equipment(
+        id: item.id,
+        modelId: item.modelId,
+        manufacturer: item.manufacturer,
+        family: item.family,
+        model: item.model,
+        modality: item.modality,
+        serialNumber: item.serialNumber,
+        customer: item.customer,
+        site: item.site,
+        status: item.status,
+        siteId: item.siteId,
+        softwareVersion: item.softwareVersion,
+        hardwareVersion: item.hardwareVersion,
+        notes: item.notes,
+        archivedAt: value,
+      );
+
   @override
   Future<void> saveCase(ServiceCaseDraft draft) async {
     await _ensureHydrated();
@@ -903,13 +1137,14 @@ class DemoServiceLogRepository
     required String entityType,
     required String entityId,
     required Map<String, dynamic> payload,
+    String operation = 'upsert',
   }) async {
     final queue = _syncQueue;
     if (queue == null) return;
     await queue.enqueue(
       entityType: entityType,
       entityId: entityId,
-      operation: 'upsert',
+      operation: operation,
       payload: <String, dynamic>{
         ...payload,
         '_base_revision': remoteRevision(entityType, entityId),
@@ -1066,6 +1301,7 @@ class DemoServiceLogRepository
               city: item['city'] as String?,
               state: item['state'] as String?,
               notes: item['notes'] as String?,
+              archivedAt: _parseIso(item['archivedAt']),
             ),
           ),
         );
@@ -1103,6 +1339,7 @@ class DemoServiceLogRepository
               softwareVersion: item['softwareVersion'] as String?,
               hardwareVersion: item['hardwareVersion'] as String?,
               notes: item['notes'] as String?,
+              archivedAt: _parseIso(item['archivedAt']),
             ),
           ),
         );
@@ -1153,6 +1390,7 @@ class DemoServiceLogRepository
                 'city': item.city,
                 'state': item.state,
                 'notes': item.notes,
+                'archivedAt': item.archivedAt?.toIso8601String(),
               },
             )
             .toList(),
@@ -1186,6 +1424,7 @@ class DemoServiceLogRepository
                 'hardwareVersion': item.hardwareVersion,
                 'status': item.status,
                 'notes': item.notes,
+                'archivedAt': item.archivedAt?.toIso8601String(),
               },
             )
             .toList(),
@@ -1240,6 +1479,7 @@ class DemoServiceLogRepository
     'requiresFollowUp': item.requiresFollowUp,
     'followUpNotes': item.followUpNotes,
     'safetyNotes': item.safetyNotes,
+    'archivedAt': item.archivedAt?.toIso8601String(),
   };
 
   static ServiceCase _caseFromJson(Map<String, dynamic> item) => ServiceCase(
@@ -1284,6 +1524,7 @@ class DemoServiceLogRepository
     requiresFollowUp: item['requiresFollowUp'] as bool? ?? false,
     followUpNotes: item['followUpNotes'] as String?,
     safetyNotes: item['safetyNotes'] as String?,
+    archivedAt: _parseIso(item['archivedAt']),
   );
 
   static List<Map<String, dynamic>> _list(dynamic value) {

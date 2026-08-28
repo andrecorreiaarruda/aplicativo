@@ -119,6 +119,24 @@ divergência de dados — o vencedor gravou exatamente o que o perdedor queria.
 Nesse caso a operação é repetida uma vez, e a segunda tentativa reaproveita o
 registro já commitado.
 
+## Arquivamento
+
+`archive` e `restore` entraram na fila como operações próprias, ao lado de
+`upsert`. Elas preenchem e limpam `deleted_at`, coluna criada na `0001` e
+até então sem uso: o registro sai das listagens e continua no banco.
+
+Arquivar é recusado enquanto houver histórico dependente — um cliente com
+equipamentos, um equipamento com atendimentos. A ordem obrigatória é
+atendimento, equipamento, cliente. A checagem existe no cliente, para
+resposta imediata, e no servidor, que é quem decide: offline o dispositivo
+não enxerga o que os outros criaram. A recusa do servidor chega como
+conflito, com as contagens em `server_payload`.
+
+O pull descarta registros com `deleted_at` preenchido, então o espelho
+local só conhece os arquivamentos feitos no próprio dispositivo e ainda
+não sincronizados. A tela de restauração consulta o servidor à parte, com
+o estado local como alternativa quando não há rede.
+
 ## Estrutura da RPC
 
 A lógica de `apply_offline_operation` vive em uma única definição,

@@ -2,7 +2,9 @@
 
 1. O pull remoto substitui o snapshot local completo; ainda não usa paginação ou cursor incremental.
 2. Conflitos são detectados e preservados, mas ainda não existe tela para comparar e resolver versões.
-3. Exclusões e tombstones não estão expostos na interface.
+3. A exclusão é lógica (arquivamento), com tela de restauração. Não há
+   exclusão definitiva pela interface, e arquivar é recusado enquanto
+   houver histórico dependente.
 4. Anexos não funcionam offline.
 5. O SQLite local mantém o estado operacional em snapshot JSON, não em tabelas normalizadas por entidade.
 6. O cache de perfil permite abrir o workspace offline após um primeiro acesso online, mas fluxos de expiração completa de sessão ainda precisam de homologação por plataforma.

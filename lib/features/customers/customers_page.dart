@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/orion_theme.dart';
 import '../../data/models/equipment.dart';
+import '../../shared/widgets/archive_confirmation.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/responsive_dialog.dart';
 import '../../shared/widgets/section_header.dart';
@@ -25,6 +26,26 @@ class _CustomersPageState extends State<CustomersPage> {
   void dispose() {
     _search.dispose();
     super.dispose();
+  }
+
+  Future<void> _archiveCustomer(CustomerOption customer) async {
+    final confirmado = await confirmArchive(
+      context,
+      tipo: 'cliente',
+      nome: customer.name,
+    );
+    if (!confirmado || !mounted) return;
+    final ok = await widget.controller.archiveCustomer(customer.id);
+    if (!mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.controller.errorMessage ?? 'Não foi possível arquivar.',
+          ),
+        ),
+      );
+    }
   }
 
   Future<String?> _newCustomer() {
@@ -185,6 +206,7 @@ class _CustomersPageState extends State<CustomersPage> {
                               .length,
                           onAddSite: () => _newSite(customer.id),
                           onEditCustomer: () => _editCustomer(customer),
+                          onArchiveCustomer: () => _archiveCustomer(customer),
                           onEditSite: _editSite,
                         ),
                       ),
@@ -282,6 +304,7 @@ class _CustomerCard extends StatelessWidget {
     required this.equipmentCount,
     required this.onAddSite,
     required this.onEditCustomer,
+    required this.onArchiveCustomer,
     required this.onEditSite,
   });
 
@@ -290,6 +313,7 @@ class _CustomerCard extends StatelessWidget {
   final int equipmentCount;
   final VoidCallback onAddSite;
   final VoidCallback onEditCustomer;
+  final VoidCallback onArchiveCustomer;
   final ValueChanged<SiteOption> onEditSite;
 
   @override
@@ -361,6 +385,11 @@ class _CustomerCard extends StatelessWidget {
                   tooltip: 'Editar cliente',
                   onPressed: onEditCustomer,
                   icon: const Icon(Icons.edit_outlined),
+                ),
+                IconButton(
+                  tooltip: 'Arquivar cliente',
+                  onPressed: onArchiveCustomer,
+                  icon: const Icon(Icons.inventory_2_outlined),
                 ),
               ],
             ),

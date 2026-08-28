@@ -570,7 +570,8 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
       solutionDetails: json['solution_details'] as String?,
       validationResult: json['validation_result'] as String?,
       finalEquipmentStatus: 'operational',
-      solutionConfidence: json['solution_confidence'] as String? ?? 'unconfirmed',
+      solutionConfidence:
+          json['solution_confidence'] as String? ?? 'unconfirmed',
     );
 
     final explanation = json['ai_explanation'] as String?;
@@ -580,6 +581,124 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
       score: score,
       reasons: reasons,
       explanation: explanation?.trim().isEmpty == true ? null : explanation,
+    );
+  }
+
+  // -----------------------------------------------------------------------
+  // Arquivamento
+  // -----------------------------------------------------------------------
+  // A validação de dependências é responsabilidade do servidor: a RPC
+  // `apply_offline_operation` recusa o arquivamento e devolve conflito.
+  // Estes caminhos diretos são usados apenas quando o aplicativo fala com
+  // o Supabase sem passar pela fila offline.
+
+  Future<void> _setDeletedAt(String table, String id, DateTime? value) async {
+    await _client
+        .from(table)
+        .update({'deleted_at': value?.toUtc().toIso8601String()})
+        .eq('id', id);
+  }
+
+  @override
+  Future<void> archiveCustomer(String id) =>
+      _setDeletedAt('customers', id, DateTime.now());
+
+  @override
+  Future<void> archiveEquipment(String id) =>
+      _setDeletedAt('equipments', id, DateTime.now());
+
+  @override
+  Future<void> archiveCase(String id) =>
+      _setDeletedAt('service_cases', id, DateTime.now());
+
+  @override
+  Future<void> restoreCustomer(String id) =>
+      _setDeletedAt('customers', id, null);
+
+  @override
+  Future<void> restoreEquipment(String id) =>
+      _setDeletedAt('equipments', id, null);
+
+  @override
+  Future<void> restoreCase(String id) =>
+      _setDeletedAt('service_cases', id, null);
+
+  @override
+  Future<ArchivedRecords> fetchArchived() async {
+    final results = await Future.wait<dynamic>([
+      _client
+          .from('customers')
+          .select()
+          .not('deleted_at', 'is', null)
+          .order('deleted_at', ascending: false),
+      _client
+          .from('equipments')
+          .select('''
+      id,
+      equipment_model_id,
+      site_id,
+      serial_number,
+      software_version,
+      hardware_version,
+      status,
+      notes,
+      deleted_at,
+      equipment_models(
+        id,
+        family,
+        model,
+        modality,
+        manufacturers(name)
+      ),
+      sites(
+        id,
+        name,
+        customers(name)
+      )
+    ''')
+          .not('deleted_at', 'is', null)
+          .order('deleted_at', ascending: false),
+      _client
+          .from('service_cases')
+          .select('id, case_number, reported_failure, opened_at, deleted_at')
+          .not('deleted_at', 'is', null)
+          .order('deleted_at', ascending: false),
+    ]);
+
+    return ArchivedRecords(
+      customers: (results[0] as List).map((row) {
+        final json = _map(row);
+        return CustomerOption(
+          id: json['id'] as String,
+          name: json['name'] as String? ?? '',
+          taxId: json['tax_id'] as String?,
+          contactName: json['contact_name'] as String?,
+          email: json['email'] as String?,
+          phone: json['phone'] as String?,
+          addressLine: json['address_line'] as String?,
+          city: json['city'] as String?,
+          state: json['state'] as String?,
+          notes: json['notes'] as String?,
+          archivedAt: DateTime.tryParse(json['deleted_at'] as String? ?? ''),
+        );
+      }).toList(),
+      equipment: (results[1] as List).map((row) {
+        final json = _map(row);
+        return Equipment.fromSupabase(json);
+      }).toList(),
+      cases: (results[2] as List).map((row) {
+        final item = _map(row);
+        return ServiceCaseSummary(
+          id: item['id'] as String,
+          caseNumber: (item['case_number'] as num?)?.toInt() ?? 0,
+          equipmentLabel: '',
+          reportedFailure: item['reported_failure'] as String? ?? '',
+          openedAt:
+              DateTime.tryParse(item['opened_at'] as String? ?? '') ??
+              DateTime.now(),
+          archivedAt: DateTime.tryParse(item['deleted_at'] as String? ?? ''),
+        );
+      }).toList(),
     );
   }
 

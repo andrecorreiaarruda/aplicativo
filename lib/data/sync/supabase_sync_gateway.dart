@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../models/equipment.dart';
 import '../models/service_case.dart';
 import '../repositories/supabase_service_log_repository.dart';
 import 'offline_sync_remote.dart';
@@ -89,6 +90,9 @@ class SupabaseSyncGateway implements OfflineSyncRemote {
   @override
   Future<void> indexResolvedCase(String serviceCaseId) =>
       _repository.indexResolvedCase(serviceCaseId);
+
+  @override
+  Future<ArchivedRecords> fetchArchived() => _repository.fetchArchived();
 
   @override
   Future<void> signOut() => _client.auth.signOut();

@@ -102,6 +102,37 @@ class OfflineFirstServiceLogRepository
   }
 
   @override
+  Future<void> archiveCustomer(String id) => _local.archiveCustomer(id);
+
+  @override
+  Future<void> archiveEquipment(String id) => _local.archiveEquipment(id);
+
+  @override
+  Future<void> archiveCase(String id) => _local.archiveCase(id);
+
+  @override
+  Future<void> restoreCustomer(String id) => _local.restoreCustomer(id);
+
+  @override
+  Future<void> restoreEquipment(String id) => _local.restoreEquipment(id);
+
+  @override
+  Future<void> restoreCase(String id) => _local.restoreCase(id);
+
+  @override
+  Future<ArchivedRecords> fetchArchived() async {
+    // O pull descarta registros arquivados (filtra deleted_at is null),
+    // então o espelho local só conhece os que foram arquivados neste
+    // dispositivo e ainda não sincronizaram. A lista completa vive no
+    // servidor; sem rede, mostra-se o que houver localmente.
+    try {
+      return await _remote.fetchArchived();
+    } catch (_) {
+      return _local.fetchArchived();
+    }
+  }
+
+  @override
   Future<void> signOut() => _remote.signOut();
 
   @override
