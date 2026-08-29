@@ -193,7 +193,8 @@ class _CaseFormState extends State<CaseForm> {
 
     final conclusao = _resolving ? (_closedAt ?? DateTime.now()) : null;
     if (conclusao != null && conclusao.isBefore(_openedAt)) {
-      setState(() => _step = 0);
+      // Leva ao passo da conclusão, que é onde a data editável está.
+      setState(() => _step = 2);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -338,20 +339,6 @@ class _CaseFormState extends State<CaseForm> {
                           }
                         },
                       ),
-                      if (_resolving) ...[
-                        const SizedBox(height: 12),
-                        _DateTimeField(
-                          label: 'Conclusão do atendimento',
-                          value: _closedAt,
-                          hint: 'Sem data definida, usa o momento da gravação',
-                          onPick: () async {
-                            final picked = await _pickDateTime(_closedAt);
-                            if (picked != null) {
-                              setState(() => _closedAt = picked);
-                            }
-                          },
-                        ),
-                      ],
                     ],
                   ),
                 ),
@@ -379,22 +366,45 @@ class _CaseFormState extends State<CaseForm> {
                   title: Text(_copy.conclusionStepTitle),
                   subtitle: Text(_copy.conclusionSubtitle),
                   isActive: _step >= 2,
-                  content: _ConclusionStep(
-                    copy: _copy,
-                    resolving: _resolving,
-                    solution: _solution,
-                    validation: _validation,
-                    entries: _progressEntries,
-                    followUpNotes: _followUpNotes,
-                    confidence: _confidence,
-                    finalStatus: _finalStatus,
-                    requiresFollowUp: _requiresFollowUp,
-                    onConfidenceChanged: (value) =>
-                        setState(() => _confidence = value),
-                    onFinalStatusChanged: (value) =>
-                        setState(() => _finalStatus = value),
-                    onFollowUpChanged: (value) =>
-                        setState(() => _requiresFollowUp = value),
+                  content: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // A data de conclusão vive aqui, e não na abertura,
+                      // porque é neste passo que o atendimento é marcado
+                      // como concluído. Na abertura ela aparecia fora do
+                      // campo de visão de quem estava encerrando.
+                      if (_resolving) ...[
+                        _DateTimeField(
+                          label: 'Conclusão do atendimento',
+                          value: _closedAt,
+                          hint: 'Sem data definida, usa o momento da gravação',
+                          onPick: () async {
+                            final picked = await _pickDateTime(_closedAt);
+                            if (picked != null) {
+                              setState(() => _closedAt = picked);
+                            }
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+                      _ConclusionStep(
+                        copy: _copy,
+                        resolving: _resolving,
+                        solution: _solution,
+                        validation: _validation,
+                        entries: _progressEntries,
+                        followUpNotes: _followUpNotes,
+                        confidence: _confidence,
+                        finalStatus: _finalStatus,
+                        requiresFollowUp: _requiresFollowUp,
+                        onConfidenceChanged: (value) =>
+                            setState(() => _confidence = value),
+                        onFinalStatusChanged: (value) =>
+                            setState(() => _finalStatus = value),
+                        onFollowUpChanged: (value) =>
+                            setState(() => _requiresFollowUp = value),
+                      ),
+                    ],
                   ),
                 ),
               ],
