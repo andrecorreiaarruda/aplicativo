@@ -406,6 +406,107 @@ void main() {
     expect((await segunda.fetchArchived()).cases, hasLength(1));
   });
 
+  test('datas informadas prevalecem sobre o relógio da máquina', () async {
+    final repository = DemoServiceLogRepository.seeded(
+      storage: MemorySnapshotStore(),
+    );
+    final abertura = DateTime(2019, 3, 14, 8, 30);
+    final conclusao = DateTime(2019, 3, 15, 17, 45);
+
+    await repository.saveCase(
+      ServiceCaseDraft(
+        equipmentId: 'eq-allura-001',
+        reportedFailure: 'Chamado histórico importado',
+        status: 'resolved',
+        operationalImpact: 'degraded',
+        solutionConfidence: 'confirmed',
+        solutionDetails: 'Troca de módulo.',
+        validationResult: 'Imagem conforme.',
+        finalEquipmentStatus: 'operational',
+        openedAt: abertura,
+        closedAt: conclusao,
+      ),
+    );
+
+    final item = (await repository.fetchCases()).firstWhere(
+      (value) => value.reportedFailure == 'Chamado histórico importado',
+    );
+    expect(item.openedAt, abertura);
+    expect(item.closedAt, conclusao);
+  });
+
+  test('editar atendimento concluído não move a data de conclusão', () async {
+    final repository = DemoServiceLogRepository.seeded(
+      storage: MemorySnapshotStore(),
+    );
+    final abertura = DateTime(2020, 6, 1, 9);
+    final conclusao = DateTime(2020, 6, 2, 16);
+
+    await repository.saveCase(
+      ServiceCaseDraft(
+        equipmentId: 'eq-allura-001',
+        reportedFailure: 'Concluído em 2020',
+        status: 'resolved',
+        operationalImpact: 'degraded',
+        solutionConfidence: 'confirmed',
+        solutionDetails: 'Ajuste.',
+        validationResult: 'Validado.',
+        finalEquipmentStatus: 'operational',
+        openedAt: abertura,
+        closedAt: conclusao,
+      ),
+    );
+    final original = (await repository.fetchCases()).firstWhere(
+      (value) => value.reportedFailure == 'Concluído em 2020',
+    );
+
+    // Reedita sem informar datas: antes da correção, a conclusão era
+    // reescrita para o instante da gravação.
+    await repository.saveCase(
+      ServiceCaseDraft(
+        id: original.id,
+        equipmentId: original.equipmentId,
+        reportedFailure: 'Concluído em 2020 — texto ajustado',
+        status: 'resolved',
+        operationalImpact: original.operationalImpact,
+        solutionConfidence: original.solutionConfidence,
+        solutionDetails: original.solutionDetails,
+        validationResult: original.validationResult,
+        finalEquipmentStatus: original.finalEquipmentStatus,
+      ),
+    );
+
+    final depois = (await repository.fetchCases()).firstWhere(
+      (value) => value.id == original.id,
+    );
+    expect(depois.openedAt, abertura);
+    expect(depois.closedAt, conclusao);
+  });
+
+  test('conclusão anterior à abertura é recusada', () async {
+    final repository = DemoServiceLogRepository.seeded(
+      storage: MemorySnapshotStore(),
+    );
+
+    await expectLater(
+      repository.saveCase(
+        ServiceCaseDraft(
+          equipmentId: 'eq-allura-001',
+          reportedFailure: 'Datas invertidas',
+          status: 'resolved',
+          operationalImpact: 'degraded',
+          solutionConfidence: 'confirmed',
+          solutionDetails: 'x',
+          validationResult: 'y',
+          finalEquipmentStatus: 'operational',
+          openedAt: DateTime(2021, 5, 10),
+          closedAt: DateTime(2021, 5, 9),
+        ),
+      ),
+      throwsStateError,
+    );
+  });
+
   test('estado local é reidratado pelo armazenamento persistente', () async {
     final store = MemorySnapshotStore();
     final firstRepository = DemoServiceLogRepository.seeded(

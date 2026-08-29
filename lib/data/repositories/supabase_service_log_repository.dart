@@ -432,7 +432,14 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
       'requires_follow_up': draft.requiresFollowUp,
       'follow_up_notes': _blankToNull(draft.followUpNotes),
       'safety_notes': _blankToNull(draft.safetyNotes),
-      'closed_at': resolved ? DateTime.now().toIso8601String() : null,
+      // Datas informadas prevalecem, para permitir carga de histórico.
+      // Sem elas o banco aplica o padrão de opened_at (now()) na criação
+      // e mantém o valor existente na atualização.
+      if (draft.openedAt != null)
+        'opened_at': draft.openedAt!.toUtc().toIso8601String(),
+      'closed_at': resolved
+          ? (draft.closedAt ?? DateTime.now()).toUtc().toIso8601String()
+          : null,
     };
 
     late final String serviceCaseId;

@@ -44,6 +44,12 @@ class _CaseFormState extends State<CaseForm> {
   bool _requiresFollowUp = false;
   int _step = 0;
 
+  /// Abertura e conclusão informadas manualmente. Necessárias para
+  /// carregar histórico antigo, em que a data do registro não é a data
+  /// do atendimento.
+  late DateTime _openedAt;
+  DateTime? _closedAt;
+
   bool get _resolving => _status == 'resolved';
   _ActivityCopy get _copy => _ActivityCopy.forType(_activityType);
 
@@ -76,6 +82,28 @@ class _CaseFormState extends State<CaseForm> {
     _validation = TextEditingController(text: item?.validationResult ?? '');
     _followUpNotes = TextEditingController(text: item?.followUpNotes ?? '');
     _safetyNotes = TextEditingController(text: item?.safetyNotes ?? '');
+    _openedAt = item?.openedAt ?? DateTime.now();
+    _closedAt = item?.closedAt;
+  }
+
+  /// Seletor de data e hora. O limite inferior é largo de propósito: a
+  /// carga de histórico pode alcançar equipamentos instalados há muitos
+  /// anos.
+  Future<DateTime?> _pickDateTime(DateTime? current) async {
+    final base = current ?? DateTime.now();
+    final date = await showDatePicker(
+      context: context,
+      initialDate: base,
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now().add(const Duration(days: 1)),
+    );
+    if (date == null || !mounted) return null;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(base),
+    );
+    if (time == null) return null;
+    return DateTime(date.year, date.month, date.day, time.hour, time.minute);
   }
 
   @override
@@ -163,6 +191,19 @@ class _CaseFormState extends State<CaseForm> {
     }
     if (!_formKey.currentState!.validate()) return;
 
+    final conclusao = _resolving ? (_closedAt ?? DateTime.now()) : null;
+    if (conclusao != null && conclusao.isBefore(_openedAt)) {
+      setState(() => _step = 0);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'A conclusão não pode ser anterior à abertura do chamado.',
+          ),
+        ),
+      );
+      return;
+    }
+
     final ok = await widget.controller.saveCase(
       ServiceCaseDraft(
         id: widget.initialCase?.id,
@@ -185,6 +226,8 @@ class _CaseFormState extends State<CaseForm> {
         requiresFollowUp: _requiresFollowUp,
         followUpNotes: _followUpNotes.text,
         safetyNotes: _safetyNotes.text,
+        openedAt: _openedAt,
+        closedAt: conclusao,
       ),
     );
     if (ok && mounted) Navigator.of(context).pop(true);
@@ -262,22 +305,54 @@ class _CaseFormState extends State<CaseForm> {
                   title: const Text('Abertura'),
                   subtitle: Text(_copy.openingSubtitle),
                   isActive: _step >= 0,
-                  content: _OpeningStep(
-                    equipment: widget.controller.equipment,
-                    equipmentId: _equipmentId,
-                    activityType: _activityType,
-                    copy: _copy,
-                    failure: _failure,
-                    errorCode: _errorCode,
-                    errorMessage: _errorMessage,
-                    subsystem: _subsystem,
-                    status: _status,
-                    impact: _impact,
-                    onEquipmentChanged: (value) =>
-                        setState(() => _equipmentId = value),
-                    onActivityChanged: _changeActivity,
-                    onStatusChanged: (value) => setState(() => _status = value),
-                    onImpactChanged: (value) => setState(() => _impact = value),
+                  content: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _OpeningStep(
+                        equipment: widget.controller.equipment,
+                        equipmentId: _equipmentId,
+                        activityType: _activityType,
+                        copy: _copy,
+                        failure: _failure,
+                        errorCode: _errorCode,
+                        errorMessage: _errorMessage,
+                        subsystem: _subsystem,
+                        status: _status,
+                        impact: _impact,
+                        onEquipmentChanged: (value) =>
+                            setState(() => _equipmentId = value),
+                        onActivityChanged: _changeActivity,
+                        onStatusChanged: (value) =>
+                            setState(() => _status = value),
+                        onImpactChanged: (value) =>
+                            setState(() => _impact = value),
+                      ),
+                      const SizedBox(height: 16),
+                      _DateTimeField(
+                        label: 'Abertura do chamado',
+                        value: _openedAt,
+                        onPick: () async {
+                          final picked = await _pickDateTime(_openedAt);
+                          if (picked != null) {
+                            setState(() => _openedAt = picked);
+                          }
+                        },
+                      ),
+                      if (_resolving) ...[
+                        const SizedBox(height: 12),
+                        _DateTimeField(
+                          label: 'Conclusão do atendimento',
+                          value: _closedAt,
+                          hint: 'Sem data definida, usa o momento da gravação',
+                          onPick: () async {
+                            final picked = await _pickDateTime(_closedAt);
+                            if (picked != null) {
+                              setState(() => _closedAt = picked);
+                            }
+                          },
+                        ),
+                      ],
+                    ],
                   ),
                 ),
                 Step(
@@ -699,7 +774,10 @@ class _OpenSessionBanner extends StatelessWidget {
                   'Iniciada em ${timeFormat.format(entry.occurredAt)}, sem '
                   'horário de fim. O atendimento não pode ser concluído '
                   'enquanto ela estiver assim.',
-                  style: const TextStyle(fontSize: 12, color: OrionColors.muted),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: OrionColors.muted,
+                  ),
                 ),
               ],
             ),
@@ -755,7 +833,9 @@ class _ManualSessionDialogState extends State<_ManualSessionDialog> {
     final date = await showDatePicker(
       context: context,
       initialDate: current,
-      firstDate: DateTime(current.year - 2),
+      // Largo o bastante para carga de histórico: uma sessão pode ser de
+      // um atendimento realizado há muitos anos.
+      firstDate: DateTime(2000),
       lastDate: DateTime.now().add(const Duration(days: 1)),
     );
     if (date == null || !mounted) return;
@@ -787,7 +867,9 @@ class _ManualSessionDialogState extends State<_ManualSessionDialog> {
       return;
     }
     if (!_endedAt.isAfter(_startedAt)) {
-      setState(() => _error = 'O fim da sessão precisa ser posterior ao início.');
+      setState(
+        () => _error = 'O fim da sessão precisa ser posterior ao início.',
+      );
       return;
     }
     Navigator.of(context).pop(
@@ -983,7 +1065,6 @@ class _ConclusionStep extends StatelessWidget {
       ],
     );
   }
-
 }
 
 /// Resumo somente-leitura dos tempos derivados das sessões do diário.
@@ -1242,5 +1323,50 @@ class _ActivityCopy {
           followUpLabel: 'Necessita retorno ou acompanhamento',
         );
     }
+  }
+}
+
+/// Campo de data e hora com seleção por diálogo.
+///
+/// Existe para permitir carga de histórico: sem ele, abertura e conclusão
+/// vinham do relógio da máquina, o que registra a data da digitação em vez
+/// da data do atendimento.
+class _DateTimeField extends StatelessWidget {
+  const _DateTimeField({
+    required this.label,
+    required this.value,
+    required this.onPick,
+    this.hint,
+  });
+
+  final String label;
+  final DateTime? value;
+  final String? hint;
+  final Future<void> Function() onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    final formatter = DateFormat('dd/MM/yyyy HH:mm');
+    final texto = value == null
+        ? (hint ?? 'Não informada')
+        : formatter.format(value!);
+    return InputDecorator(
+      decoration: InputDecoration(
+        labelText: label,
+        border: const OutlineInputBorder(),
+        prefixIcon: const Icon(Icons.event_outlined),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              texto,
+              style: TextStyle(color: value == null ? OrionColors.muted : null),
+            ),
+          ),
+          TextButton(onPressed: onPick, child: const Text('Alterar')),
+        ],
+      ),
+    );
   }
 }

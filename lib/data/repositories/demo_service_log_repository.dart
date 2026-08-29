@@ -966,8 +966,24 @@ class DemoServiceLogRepository
       );
     }
 
-    final openedAt = existing?.openedAt ?? DateTime.now();
-    final closedAt = resolved ? DateTime.now() : null;
+    // A data informada no rascunho prevalece: ao carregar histórico
+    // antigo, a data do registro não é a data do atendimento. Sem ela,
+    // preserva-se a que já estava gravada.
+    final openedAt = draft.openedAt ?? existing?.openedAt ?? DateTime.now();
+
+    // Só recorre ao relógio quando o atendimento está sendo concluído
+    // agora e não havia conclusão anterior. Antes, qualquer gravação de
+    // um atendimento resolvido reescrevia a conclusão para o instante
+    // atual, movendo a data de chamados antigos a cada edição.
+    final closedAt = !resolved
+        ? null
+        : (draft.closedAt ?? existing?.closedAt ?? DateTime.now());
+
+    if (closedAt != null && closedAt.isBefore(openedAt)) {
+      throw StateError(
+        'A conclusão não pode ser anterior à abertura do chamado.',
+      );
+    }
 
     // Tempo técnico é somado das sessões do diário — aritmética pura, sem
     // constante de calibração, então pode ser calculado offline.

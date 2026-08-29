@@ -260,6 +260,8 @@ class ServiceCaseDraft {
     this.requiresFollowUp = false,
     this.followUpNotes,
     this.safetyNotes,
+    this.openedAt,
+    this.closedAt,
   });
 
   final String? id;
@@ -286,6 +288,15 @@ class ServiceCaseDraft {
   final bool requiresFollowUp;
   final String? followUpNotes;
   final String? safetyNotes;
+
+  /// Abertura do chamado. Nulo mantém a data já gravada, ou usa o
+  /// relógio na criação. Informada explicitamente ao carregar histórico
+  /// antigo, em que a data do registro não é a data do atendimento.
+  final DateTime? openedAt;
+
+  /// Conclusão do atendimento. Só é considerada quando o status é
+  /// resolvido.
+  final DateTime? closedAt;
 }
 
 class SimilarCaseQuery {
