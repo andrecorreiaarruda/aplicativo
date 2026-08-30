@@ -615,6 +615,25 @@ class DemoServiceLogRepository
   Future<void> createEquipment(EquipmentDraft draft) async {
     await _ensureHydrated();
     await _latency();
+    final serial = draft.serialNumber.trim();
+
+    // O banco tem unique (organization_id, serial_number). Sem checar
+    // aqui, o cadastro era aceito localmente, recusado na sincronização,
+    // e depois sumia da tela quando o pull substituía o estado local
+    // pelo remoto — dando a impressão de que um equipamento havia
+    // substituído o outro. Arquivados contam: a restrição do banco não
+    // os ignora.
+    final duplicate = _equipment.any(
+      (item) => item.serialNumber.toLowerCase() == serial.toLowerCase(),
+    );
+    if (duplicate) {
+      throw StateError(
+        'Já existe um equipamento com o número de série "$serial". '
+        'Cada unidade precisa de uma série distinta, mesmo sendo do '
+        'mesmo modelo.',
+      );
+    }
+
     final model = _models.firstWhere((item) => item.id == draft.modelId);
     final matchingSites = _sites.where((item) => item.id == draft.siteId);
     final site = matchingSites.isEmpty ? null : matchingSites.first;
@@ -627,7 +646,7 @@ class DemoServiceLogRepository
         family: model.family,
         model: model.model,
         modality: model.modality,
-        serialNumber: draft.serialNumber.trim(),
+        serialNumber: serial,
         customer: site?.customer ?? '',
         site: site?.site ?? '',
         siteId: site?.id,
@@ -646,7 +665,7 @@ class DemoServiceLogRepository
         'id': id,
         'equipment_model_id': draft.modelId,
         'site_id': draft.siteId,
-        'serial_number': draft.serialNumber.trim(),
+        'serial_number': serial,
         'software_version': _blankToNull(draft.softwareVersion),
         'hardware_version': _blankToNull(draft.hardwareVersion),
         'status': draft.status,
@@ -669,7 +688,9 @@ class DemoServiceLogRepository
           item.serialNumber.toLowerCase() == serial.toLowerCase(),
     );
     if (duplicate) {
-      throw StateError('Já existe um equipamento com este número de série.');
+      throw StateError(
+        'Já existe um equipamento com o número de série "$serial".',
+      );
     }
 
     final model = _models.firstWhere((item) => item.id == draft.modelId);

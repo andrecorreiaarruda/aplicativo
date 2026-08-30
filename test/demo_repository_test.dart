@@ -507,6 +507,42 @@ void main() {
     );
   });
 
+  test('cadastro recusa número de série já existente', () async {
+    final repository = DemoServiceLogRepository.seeded(
+      storage: MemorySnapshotStore(),
+    );
+    final existente = (await repository.fetchEquipments()).first;
+    final catalogo = await repository.fetchEquipmentCatalog();
+
+    // Antes da correção o cadastro era aceito localmente e só era
+    // recusado na sincronização, quando o registro já havia sumido da
+    // tela pelo pull.
+    await expectLater(
+      repository.createEquipment(
+        EquipmentDraft(
+          modelId: catalogo.models.first.id,
+          serialNumber: existente.serialNumber,
+          siteId: catalogo.sites.first.id,
+          status: 'operational',
+        ),
+      ),
+      throwsA(
+        isA<StateError>().having(
+          (e) => e.message,
+          'mensagem',
+          contains(existente.serialNumber),
+        ),
+      ),
+    );
+
+    // E o equipamento original continua único na listagem.
+    final depois = await repository.fetchEquipments();
+    expect(
+      depois.where((item) => item.serialNumber == existente.serialNumber),
+      hasLength(1),
+    );
+  });
+
   test('estado local é reidratado pelo armazenamento persistente', () async {
     final store = MemorySnapshotStore();
     final firstRepository = DemoServiceLogRepository.seeded(
