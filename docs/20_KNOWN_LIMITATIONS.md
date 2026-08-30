@@ -16,3 +16,7 @@
 12. Não houve auditoria externa de segurança.
 13. A compilação não foi executada no ambiente de empacotamento; deve ser validada com Flutter no computador de desenvolvimento.
 14. A identidade visual ainda não constitui um manual de marca completo.
+
+15. O gatilho `enforce_same_organization` impedia gravação em
+    atendimentos e tabelas derivadas até a migration `0013`. Bancos
+    criados com a `0001` precisam dela antes do primeiro uso real.
