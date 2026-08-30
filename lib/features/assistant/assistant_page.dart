@@ -112,7 +112,7 @@ class _AssistantPageState extends State<AssistantPage> {
                             (item) => DropdownMenuItem<String>(
                               value: item.id,
                               child: Text(
-                                '${item.displayName} · ${item.serialNumber}',
+                                '${item.displayName} · ${item.serialLabel}',
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),

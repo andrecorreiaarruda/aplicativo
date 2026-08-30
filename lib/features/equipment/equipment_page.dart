@@ -259,7 +259,7 @@ class _EquipmentCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 18),
-            _InfoLine(icon: Icons.qr_code_2_rounded, text: item.serialNumber),
+            _InfoLine(icon: Icons.qr_code_2_rounded, text: item.serialLabel),
             if (item.locationLabel.isNotEmpty)
               _InfoLine(
                 icon: Icons.location_on_outlined,

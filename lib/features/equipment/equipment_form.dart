@@ -412,8 +412,11 @@ class _EquipmentFormState extends State<EquipmentForm> {
                     controller: _serial,
                     decoration: const InputDecoration(
                       labelText: 'Número de série',
+                      helperText:
+                          'Opcional. Deixe em branco se não for possível '
+                          'identificar; quando informado, precisa ser único.',
+                      helperMaxLines: 2,
                     ),
-                    validator: _required,
                   ),
                   const SizedBox(height: 14),
                   Autocomplete<_SiteChoice>(
@@ -648,9 +651,6 @@ class _EquipmentFormState extends State<EquipmentForm> {
 
   static String _normalize(String value) =>
       value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
-
-  static String? _required(String? value) =>
-      (value?.trim().isEmpty ?? true) ? 'Campo obrigatório.' : null;
 }
 
 class _RankedEquipmentModel {

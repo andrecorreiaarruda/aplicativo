@@ -623,9 +623,13 @@ class DemoServiceLogRepository
     // pelo remoto — dando a impressão de que um equipamento havia
     // substituído o outro. Arquivados contam: a restrição do banco não
     // os ignora.
-    final duplicate = _equipment.any(
-      (item) => item.serialNumber.toLowerCase() == serial.toLowerCase(),
-    );
+    // Sem série não há o que colidir: o banco guarda nulo, e nulos são
+    // distintos entre si no índice único.
+    final duplicate =
+        serial.isNotEmpty &&
+        _equipment.any(
+          (item) => item.serialNumber.toLowerCase() == serial.toLowerCase(),
+        );
     if (duplicate) {
       throw StateError(
         'Já existe um equipamento com o número de série "$serial". '
@@ -665,7 +669,7 @@ class DemoServiceLogRepository
         'id': id,
         'equipment_model_id': draft.modelId,
         'site_id': draft.siteId,
-        'serial_number': serial,
+        'serial_number': serial.isEmpty ? null : serial,
         'software_version': _blankToNull(draft.softwareVersion),
         'hardware_version': _blankToNull(draft.hardwareVersion),
         'status': draft.status,
@@ -682,11 +686,13 @@ class DemoServiceLogRepository
     if (index < 0) throw StateError('Equipamento não encontrado.');
 
     final serial = draft.serialNumber.trim();
-    final duplicate = _equipment.any(
-      (item) =>
-          item.id != id &&
-          item.serialNumber.toLowerCase() == serial.toLowerCase(),
-    );
+    final duplicate =
+        serial.isNotEmpty &&
+        _equipment.any(
+          (item) =>
+              item.id != id &&
+              item.serialNumber.toLowerCase() == serial.toLowerCase(),
+        );
     if (duplicate) {
       throw StateError(
         'Já existe um equipamento com o número de série "$serial".',
@@ -721,7 +727,11 @@ class DemoServiceLogRepository
       final item = _cases[i];
       if (item.equipmentId != id) continue;
       _cases[i] = item.copyWith(
-        equipmentLabel: '${model.manufacturer} ${model.model} · $serial',
+        // Sem série, a etiqueta não carrega o separador solto.
+        equipmentLabel: [
+          '${model.manufacturer} ${model.model}',
+          if (serial.isNotEmpty) serial,
+        ].join(' · '),
       );
     }
 
@@ -733,7 +743,7 @@ class DemoServiceLogRepository
         'id': id,
         'equipment_model_id': draft.modelId,
         'site_id': draft.siteId,
-        'serial_number': serial,
+        'serial_number': serial.isEmpty ? null : serial,
         'software_version': _blankToNull(draft.softwareVersion),
         'hardware_version': _blankToNull(draft.hardwareVersion),
         'status': draft.status,
@@ -1021,7 +1031,11 @@ class DemoServiceLogRepository
       id: draft.id ?? _nextId('case'),
       caseNumber: existing?.caseNumber ?? _caseSequence++,
       equipmentId: equipment.id,
-      equipmentLabel: '${equipment.displayName} · ${equipment.serialNumber}',
+      // Sem série, a etiqueta não carrega o separador solto.
+      equipmentLabel: [
+        equipment.displayName,
+        if (equipment.hasSerial) equipment.serialNumber,
+      ].join(' · '),
       status: draft.status,
       activityType: draft.activityType,
       openedAt: openedAt,

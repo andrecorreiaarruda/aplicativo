@@ -509,7 +509,7 @@ class _OpeningStep extends StatelessWidget {
                 (item) => DropdownMenuItem(
                   value: item.id,
                   child: Text(
-                    '${item.displayName} · ${item.serialNumber}',
+                    '${item.displayName} · ${item.serialLabel}',
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),

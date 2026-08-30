@@ -39,6 +39,14 @@ class Equipment {
 
   bool get isArchived => archivedAt != null;
 
+  /// Vazio quando a série não pôde ser identificada. No banco a coluna
+  /// é nula nesse caso: nulos não colidem entre si no índice único,
+  /// enquanto a cadeia vazia colidiria na segunda ocorrência.
+  bool get hasSerial => serialNumber.trim().isNotEmpty;
+
+  /// Rótulo para exibição, sempre preenchido.
+  String get serialLabel => hasSerial ? serialNumber : 'Série não informada';
+
   String get displayName => '$manufacturer $model';
   String get locationLabel =>
       [customer, site].where((value) => value.isNotEmpty).join(' · ');

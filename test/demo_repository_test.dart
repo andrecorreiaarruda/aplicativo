@@ -543,6 +543,69 @@ void main() {
     );
   });
 
+  test('vários equipamentos podem ficar sem número de série', () async {
+    final repository = DemoServiceLogRepository.seeded(
+      storage: MemorySnapshotStore(),
+    );
+    final catalogo = await repository.fetchEquipmentCatalog();
+
+    // Dois sem série não colidem: no banco a coluna fica nula, e nulos
+    // são distintos entre si no índice único.
+    for (var i = 0; i < 2; i++) {
+      await repository.createEquipment(
+        EquipmentDraft(
+          modelId: catalogo.models.first.id,
+          serialNumber: '',
+          siteId: catalogo.sites.first.id,
+          status: 'operational',
+        ),
+      );
+    }
+
+    final semSerie = (await repository.fetchEquipments())
+        .where((item) => !item.hasSerial)
+        .toList();
+    expect(semSerie, hasLength(2));
+    expect(semSerie.first.serialLabel, 'Série não informada');
+  });
+
+  test(
+    'etiqueta do atendimento omite o separador quando não há série',
+    () async {
+      final repository = DemoServiceLogRepository.seeded(
+        storage: MemorySnapshotStore(),
+      );
+      final catalogo = await repository.fetchEquipmentCatalog();
+      await repository.createEquipment(
+        EquipmentDraft(
+          modelId: catalogo.models.first.id,
+          serialNumber: '',
+          siteId: catalogo.sites.first.id,
+          status: 'operational',
+        ),
+      );
+      final equipamento = (await repository.fetchEquipments()).firstWhere(
+        (item) => !item.hasSerial,
+      );
+
+      await repository.saveCase(
+        ServiceCaseDraft(
+          equipmentId: equipamento.id,
+          reportedFailure: 'Sem série',
+          status: 'open',
+          operationalImpact: 'degraded',
+          solutionConfidence: 'unconfirmed',
+        ),
+      );
+
+      final atendimento = (await repository.fetchCases()).firstWhere(
+        (item) => item.equipmentId == equipamento.id,
+      );
+      expect(atendimento.equipmentLabel, isNot(endsWith('· ')));
+      expect(atendimento.equipmentLabel, isNot(contains(' ·  ')));
+    },
+  );
+
   test('estado local é reidratado pelo armazenamento persistente', () async {
     final store = MemorySnapshotStore();
     final firstRepository = DemoServiceLogRepository.seeded(

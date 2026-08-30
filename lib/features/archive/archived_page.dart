@@ -123,7 +123,7 @@ class _ArchivedPageState extends State<ArchivedPage> {
                     for (final item in dados.equipment)
                       _LinhaArquivada(
                         titulo: item.displayName,
-                        detalhe: item.serialNumber,
+                        detalhe: item.serialLabel,
                         arquivadoEm: item.archivedAt,
                         onRestaurar: () => _restaurar(
                           () => widget.controller.restoreEquipment(item.id),

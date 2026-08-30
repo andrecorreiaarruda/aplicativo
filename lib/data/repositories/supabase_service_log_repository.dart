@@ -381,7 +381,7 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
       'organization_id': organizationId,
       'equipment_model_id': draft.modelId,
       'site_id': _blankToNull(draft.siteId),
-      'serial_number': draft.serialNumber.trim(),
+      'serial_number': _blankToNull(draft.serialNumber),
       'software_version': _blankToNull(draft.softwareVersion),
       'hardware_version': _blankToNull(draft.hardwareVersion),
       'status': draft.status,
@@ -397,7 +397,7 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
         .update({
           'equipment_model_id': draft.modelId,
           'site_id': draft.siteId,
-          'serial_number': draft.serialNumber.trim(),
+          'serial_number': _blankToNull(draft.serialNumber),
           'software_version': _blankToNull(draft.softwareVersion),
           'hardware_version': _blankToNull(draft.hardwareVersion),
           'status': draft.status,
@@ -559,9 +559,11 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
       id: json['service_case_id'] as String,
       caseNumber: (json['case_number'] as num?)?.toInt() ?? 0,
       equipmentId: json['equipment_id'] as String? ?? '',
-      equipmentLabel:
-          '${json['manufacturer'] ?? ''} ${json['equipment_model'] ?? ''} · ${json['serial_number'] ?? ''}'
-              .trim(),
+      equipmentLabel: [
+        '${json['manufacturer'] ?? ''} ${json['equipment_model'] ?? ''}'.trim(),
+        if ((json['serial_number'] as String?)?.trim().isNotEmpty == true)
+          (json['serial_number'] as String).trim(),
+      ].where((part) => part.isNotEmpty).join(' · '),
       status: 'resolved',
       activityType:
           json['activity_type'] as String? ?? ServiceActivityType.maintenance,
