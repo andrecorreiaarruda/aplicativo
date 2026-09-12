@@ -139,6 +139,16 @@ o estado local como alternativa quando não há rede.
 
 ## Estrutura da RPC
 
+O corpo vive em `orion_private.apply_offline_operation`, com isolamento
+por organização reforçado. A função pública é um invólucro fino que trata
+`archive`/`restore` e violação de chave natural, e delega o restante.
+
+Duas linhas de trabalho chegaram a essa separação de forma independente —
+uma pela `0011`, outra pela migration de autorização. A migration
+`20260912120000` reconcilia as duas, mantendo um único corpo.
+
+## Estrutura da RPC (histórico)
+
 A lógica de `apply_offline_operation` vive em uma única definição,
 `apply_offline_operation_impl`. A função pública é um invólucro fino que
 delega a ela e traduz `unique_violation` em conflito registrado.
