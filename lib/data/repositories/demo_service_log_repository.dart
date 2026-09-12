@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:uuid/uuid.dart';
 
 import '../../core/storage/local_snapshot_store.dart';
+import '../../core/storage/async_mutex.dart';
 import '../../core/storage/memory_snapshot_store.dart';
 
 import '../models/equipment.dart';
@@ -291,6 +292,8 @@ class DemoServiceLogRepository
     );
   }
 
+  final _mutex = AsyncMutex();
+  final List<SyncOperation> _stagedOperations = [];
   final LocalSnapshotStore _storage;
   final SyncQueueService? _syncQueue;
   final String _namespace;
@@ -312,14 +315,18 @@ class DemoServiceLogRepository
   bool get isDemo => _isDemo;
 
   @override
-  Future<List<Equipment>> fetchEquipments() async {
+  Future<List<Equipment>> fetchEquipments() => _mutex.run(_fetchEquipments);
+
+  Future<List<Equipment>> _fetchEquipments() async {
     await _ensureHydrated();
     await _latency();
     return List.unmodifiable(_equipment);
   }
 
   @override
-  Future<List<ServiceCase>> fetchCases() async {
+  Future<List<ServiceCase>> fetchCases() => _mutex.run(_fetchCases);
+
+  Future<List<ServiceCase>> _fetchCases() async {
     await _ensureHydrated();
     await _latency();
     final result = [..._cases]
@@ -328,7 +335,10 @@ class DemoServiceLogRepository
   }
 
   @override
-  Future<EquipmentCatalog> fetchEquipmentCatalog() async {
+  Future<EquipmentCatalog> fetchEquipmentCatalog() =>
+      _mutex.run(_fetchEquipmentCatalog);
+
+  Future<EquipmentCatalog> _fetchEquipmentCatalog() async {
     await _ensureHydrated();
     await _latency();
     return EquipmentCatalog(
@@ -339,7 +349,10 @@ class DemoServiceLogRepository
   }
 
   @override
-  Future<String> createEquipmentModel(EquipmentModelDraft draft) async {
+  Future<String> createEquipmentModel(EquipmentModelDraft draft) =>
+      _mutate(() => _createEquipmentModel(draft));
+
+  Future<String> _createEquipmentModel(EquipmentModelDraft draft) async {
     await _ensureHydrated();
     await _latency();
     final manufacturer = draft.manufacturer.trim();
@@ -361,7 +374,6 @@ class DemoServiceLogRepository
         modality: _fallback(draft.modality, 'Não informada'),
       ),
     );
-    await _persist();
     await _journal(
       entityType: 'equipment_model',
       entityId: id,
@@ -378,7 +390,10 @@ class DemoServiceLogRepository
   }
 
   @override
-  Future<String> createCustomer(CustomerDraft draft) async {
+  Future<String> createCustomer(CustomerDraft draft) =>
+      _mutate(() => _createCustomer(draft));
+
+  Future<String> _createCustomer(CustomerDraft draft) async {
     await _ensureHydrated();
     await _latency();
     final name = draft.name.trim();
@@ -402,7 +417,6 @@ class DemoServiceLogRepository
         notes: _blankToNull(draft.notes),
       ),
     );
-    await _persist();
     await _journal(
       entityType: 'customer',
       entityId: id,
@@ -412,7 +426,10 @@ class DemoServiceLogRepository
   }
 
   @override
-  Future<void> updateCustomer(String id, CustomerDraft draft) async {
+  Future<void> updateCustomer(String id, CustomerDraft draft) =>
+      _mutate(() => _updateCustomer(id, draft));
+
+  Future<void> _updateCustomer(String id, CustomerDraft draft) async {
     await _ensureHydrated();
     await _latency();
     final index = _customers.indexWhere((item) => item.id == id);
@@ -474,7 +491,6 @@ class DemoServiceLogRepository
       );
     }
 
-    await _persist();
     await _journal(
       entityType: 'customer',
       entityId: id,
@@ -483,7 +499,10 @@ class DemoServiceLogRepository
   }
 
   @override
-  Future<String> createSite(SiteDraft draft) async {
+  Future<String> createSite(SiteDraft draft) =>
+      _mutate(() => _createSite(draft));
+
+  Future<String> _createSite(SiteDraft draft) async {
     await _ensureHydrated();
     await _latency();
     final customer = _customers.firstWhere(
@@ -509,7 +528,6 @@ class DemoServiceLogRepository
         notes: _blankToNull(draft.notes),
       ),
     );
-    await _persist();
     await _journal(
       entityType: 'site',
       entityId: id,
@@ -519,7 +537,10 @@ class DemoServiceLogRepository
   }
 
   @override
-  Future<void> updateSite(String id, SiteDraft draft) async {
+  Future<void> updateSite(String id, SiteDraft draft) =>
+      _mutate(() => _updateSite(id, draft));
+
+  Future<void> _updateSite(String id, SiteDraft draft) async {
     await _ensureHydrated();
     await _latency();
     final index = _sites.indexWhere((item) => item.id == id);
@@ -569,7 +590,6 @@ class DemoServiceLogRepository
       );
     }
 
-    await _persist();
     await _journal(
       entityType: 'site',
       entityId: id,
@@ -578,8 +598,11 @@ class DemoServiceLogRepository
   }
 
   @override
-  Future<String> createCustomerSite(CustomerSiteDraft draft) async {
-    final customerId = await createCustomer(
+  Future<String> createCustomerSite(CustomerSiteDraft draft) =>
+      _mutate(() => _createCustomerSite(draft));
+
+  Future<String> _createCustomerSite(CustomerSiteDraft draft) async {
+    final customerId = await _createCustomer(
       CustomerDraft(
         name: draft.customerName,
         taxId: draft.taxId,
@@ -592,7 +615,7 @@ class DemoServiceLogRepository
         notes: draft.customerNotes,
       ),
     );
-    return createSite(
+    return _createSite(
       SiteDraft(
         customerId: customerId,
         siteName: draft.siteName,
@@ -604,7 +627,10 @@ class DemoServiceLogRepository
   }
 
   @override
-  Future<void> createEquipment(EquipmentDraft draft) async {
+  Future<void> createEquipment(EquipmentDraft draft) =>
+      _mutate(() => _createEquipment(draft));
+
+  Future<void> _createEquipment(EquipmentDraft draft) async {
     await _ensureHydrated();
     await _latency();
     final model = _models.firstWhere((item) => item.id == draft.modelId);
@@ -630,7 +656,6 @@ class DemoServiceLogRepository
       ),
     );
     _equipmentSequence++;
-    await _persist();
     await _journal(
       entityType: 'equipment',
       entityId: id,
@@ -648,7 +673,10 @@ class DemoServiceLogRepository
   }
 
   @override
-  Future<void> saveCase(ServiceCaseDraft draft) async {
+  Future<void> saveCase(ServiceCaseDraft draft) =>
+      _mutate(() => _saveCase(draft));
+
+  Future<void> _saveCase(ServiceCaseDraft draft) async {
     await _ensureHydrated();
     await _latency();
     final equipment = _equipment.firstWhere(
@@ -714,7 +742,6 @@ class DemoServiceLogRepository
     } else {
       _cases.add(item);
     }
-    await _persist();
     await _journal(
       entityType: 'service_case',
       entityId: item.id,
@@ -723,9 +750,10 @@ class DemoServiceLogRepository
   }
 
   @override
-  Future<List<SimilarCaseResult>> searchSimilarCases(
-    SimilarCaseQuery query,
-  ) async {
+  Future<List<SimilarCaseResult>> searchSimilarCases(SimilarCaseQuery query) =>
+      _mutex.run(() => _searchSimilarCases(query));
+
+  Future<List<SimilarCaseResult>> _searchSimilarCases(SimilarCaseQuery query) async {
     await _ensureHydrated();
     await _latency();
     final queryTokens = _tokens(
@@ -840,15 +868,20 @@ class DemoServiceLogRepository
   }) async {
     final queue = _syncQueue;
     if (queue == null) return;
-    await queue.enqueue(
-      entityType: entityType,
-      entityId: entityId,
-      operation: 'upsert',
-      payload: <String, dynamic>{
-        ...payload,
-        '_base_revision': remoteRevision(entityType, entityId),
-        '_client_updated_at': DateTime.now().toUtc().toIso8601String(),
-      },
+    _stagedOperations.add(
+      SyncOperation(
+        id: _uuid.v4(),
+        namespace: _namespace,
+        entityType: entityType,
+        entityId: entityId,
+        operation: 'upsert',
+        createdAt: DateTime.now(),
+        payload: {
+          ...payload,
+          '_base_revision': remoteRevision(entityType, entityId),
+          '_client_updated_at': DateTime.now().toUtc().toIso8601String(),
+        },
+      ),
     );
   }
 
@@ -880,23 +913,24 @@ class DemoServiceLogRepository
   int remoteRevision(String entityType, String entityId) =>
       _remoteRevisions['$entityType:$entityId'] ?? 0;
 
-  Future<void> updateRemoteRevision(
-    String entityType,
-    String entityId,
-    int revision,
-  ) async {
-    await _ensureHydrated();
-    _remoteRevisions['$entityType:$entityId'] = revision;
-    await _persist();
-  }
+  Future<void> acknowledge(SyncOperation operation, int revision) => _mutate(
+    () async {
+      _remoteRevisions['${operation.entityType}:${operation.entityId}'] =
+          revision;
+    },
+    completed: operation,
+    revision: revision,
+  );
 
   Future<void> replaceFromRemote({
     required List<Equipment> equipment,
     required List<ServiceCase> cases,
     required EquipmentCatalog catalog,
     required Map<String, int> revisions,
-  }) async {
-    await _ensureHydrated();
+  }) => _mutate(() async {
+    // A downloaded snapshot is stale with respect to edits made during I/O.
+    // Keep the complete local view until the pending writes have been replayed.
+    if (await _storage.pendingCount(_namespace) > 0) return;
     _models
       ..clear()
       ..addAll(catalog.models);
@@ -920,8 +954,7 @@ class DemoServiceLogRepository
       (current, item) => item.caseNumber > current ? item.caseNumber : current,
     );
     _caseSequence = greatestCaseNumber + 1;
-    await _persist();
-  }
+  });
 
   static Map<String, dynamic> _caseSyncPayload(ServiceCase item) => {
     'id': item.id,
@@ -970,167 +1003,190 @@ class DemoServiceLogRepository
       return;
     }
 
-    try {
-      final root = jsonDecode(stored) as Map<String, dynamic>;
-      _models
-        ..clear()
-        ..addAll(
-          _list(root['models']).map(
-            (item) => EquipmentModelOption(
-              id: item['id'] as String,
-              manufacturer: item['manufacturer'] as String? ?? '',
-              family: item['family'] as String? ?? '',
-              model: item['model'] as String? ?? '',
-              modality: item['modality'] as String? ?? '',
-            ),
-          ),
-        );
-      _customers
-        ..clear()
-        ..addAll(
-          _list(root['customers']).map(
-            (item) => CustomerOption(
-              id: item['id'] as String,
-              name: item['name'] as String? ?? '',
-              taxId: item['taxId'] as String?,
-              contactName: item['contactName'] as String?,
-              email: item['email'] as String?,
-              phone: item['phone'] as String?,
-              addressLine: item['addressLine'] as String?,
-              city: item['city'] as String?,
-              state: item['state'] as String?,
-              notes: item['notes'] as String?,
-            ),
-          ),
-        );
-      _sites
-        ..clear()
-        ..addAll(
-          _list(root['sites']).map(
-            (item) => SiteOption(
-              id: item['id'] as String,
-              customerId: item['customerId'] as String? ?? '',
-              customer: item['customer'] as String? ?? '',
-              site: item['site'] as String? ?? '',
-              city: item['city'] as String?,
-              state: item['state'] as String?,
-              notes: item['notes'] as String?,
-            ),
-          ),
-        );
-      _equipment
-        ..clear()
-        ..addAll(
-          _list(root['equipment']).map(
-            (item) => Equipment(
-              id: item['id'] as String,
-              modelId: item['modelId'] as String? ?? '',
-              manufacturer: item['manufacturer'] as String? ?? '',
-              family: item['family'] as String? ?? '',
-              model: item['model'] as String? ?? '',
-              modality: item['modality'] as String? ?? '',
-              serialNumber: item['serialNumber'] as String? ?? '',
-              customer: item['customer'] as String? ?? '',
-              site: item['site'] as String? ?? '',
-              status: item['status'] as String? ?? 'operational',
-              siteId: item['siteId'] as String?,
-              softwareVersion: item['softwareVersion'] as String?,
-              hardwareVersion: item['hardwareVersion'] as String?,
-              notes: item['notes'] as String?,
-            ),
-          ),
-        );
-      _cases
-        ..clear()
-        ..addAll(_list(root['cases']).map(_caseFromJson));
-      _equipmentSequence = (root['equipmentSequence'] as num?)?.toInt() ?? 10;
-      _caseSequence = (root['caseSequence'] as num?)?.toInt() ?? 105;
-      _catalogSequence = (root['catalogSequence'] as num?)?.toInt() ?? 100;
-      _remoteRevisions
-        ..clear()
-        ..addAll(
-          Map<String, dynamic>.from(
-            root['remoteRevisions'] as Map? ?? const <String, dynamic>{},
-          ).map((key, value) => MapEntry(key, (value as num?)?.toInt() ?? 0)),
-        );
-    } catch (_) {
-      await _storage.removeSnapshot(_namespace);
-      await _persist();
-    }
+    _restoreSnapshot(stored);
   }
 
-  Future<void> _persist() async {
-    await _storage.writeSnapshot(
-      _namespace,
-      jsonEncode({
-        'models': _models
-            .map(
-              (item) => {
-                'id': item.id,
-                'manufacturer': item.manufacturer,
-                'family': item.family,
-                'model': item.model,
-                'modality': item.modality,
-              },
-            )
-            .toList(),
-        'customers': _customers
-            .map(
-              (item) => {
-                'id': item.id,
-                'name': item.name,
-                'taxId': item.taxId,
-                'contactName': item.contactName,
-                'email': item.email,
-                'phone': item.phone,
-                'addressLine': item.addressLine,
-                'city': item.city,
-                'state': item.state,
-                'notes': item.notes,
-              },
-            )
-            .toList(),
-        'sites': _sites
-            .map(
-              (item) => {
-                'id': item.id,
-                'customerId': item.customerId,
-                'customer': item.customer,
-                'site': item.site,
-                'city': item.city,
-                'state': item.state,
-                'notes': item.notes,
-              },
-            )
-            .toList(),
-        'equipment': _equipment
-            .map(
-              (item) => {
-                'id': item.id,
-                'modelId': item.modelId,
-                'manufacturer': item.manufacturer,
-                'family': item.family,
-                'model': item.model,
-                'modality': item.modality,
-                'serialNumber': item.serialNumber,
-                'customer': item.customer,
-                'site': item.site,
-                'siteId': item.siteId,
-                'softwareVersion': item.softwareVersion,
-                'hardwareVersion': item.hardwareVersion,
-                'status': item.status,
-                'notes': item.notes,
-              },
-            )
-            .toList(),
-        'cases': _cases.map(_caseToJson).toList(),
-        'equipmentSequence': _equipmentSequence,
-        'caseSequence': _caseSequence,
-        'catalogSequence': _catalogSequence,
-        'remoteRevisions': _remoteRevisions,
-      }),
-    );
+  void _restoreSnapshot(String stored) {
+    final root = jsonDecode(stored) as Map<String, dynamic>;
+    _models
+      ..clear()
+      ..addAll(
+        _list(root['models']).map(
+          (item) => EquipmentModelOption(
+            id: item['id'] as String,
+            manufacturer: item['manufacturer'] as String? ?? '',
+            family: item['family'] as String? ?? '',
+            model: item['model'] as String? ?? '',
+            modality: item['modality'] as String? ?? '',
+          ),
+        ),
+      );
+    _customers
+      ..clear()
+      ..addAll(
+        _list(root['customers']).map(
+          (item) => CustomerOption(
+            id: item['id'] as String,
+            name: item['name'] as String? ?? '',
+            taxId: item['taxId'] as String?,
+            contactName: item['contactName'] as String?,
+            email: item['email'] as String?,
+            phone: item['phone'] as String?,
+            addressLine: item['addressLine'] as String?,
+            city: item['city'] as String?,
+            state: item['state'] as String?,
+            notes: item['notes'] as String?,
+          ),
+        ),
+      );
+    _sites
+      ..clear()
+      ..addAll(
+        _list(root['sites']).map(
+          (item) => SiteOption(
+            id: item['id'] as String,
+            customerId: item['customerId'] as String? ?? '',
+            customer: item['customer'] as String? ?? '',
+            site: item['site'] as String? ?? '',
+            city: item['city'] as String?,
+            state: item['state'] as String?,
+            notes: item['notes'] as String?,
+          ),
+        ),
+      );
+    _equipment
+      ..clear()
+      ..addAll(
+        _list(root['equipment']).map(
+          (item) => Equipment(
+            id: item['id'] as String,
+            modelId: item['modelId'] as String? ?? '',
+            manufacturer: item['manufacturer'] as String? ?? '',
+            family: item['family'] as String? ?? '',
+            model: item['model'] as String? ?? '',
+            modality: item['modality'] as String? ?? '',
+            serialNumber: item['serialNumber'] as String? ?? '',
+            customer: item['customer'] as String? ?? '',
+            site: item['site'] as String? ?? '',
+            status: item['status'] as String? ?? 'operational',
+            siteId: item['siteId'] as String?,
+            softwareVersion: item['softwareVersion'] as String?,
+            hardwareVersion: item['hardwareVersion'] as String?,
+            notes: item['notes'] as String?,
+          ),
+        ),
+      );
+    _cases
+      ..clear()
+      ..addAll(_list(root['cases']).map(_caseFromJson));
+    _equipmentSequence = (root['equipmentSequence'] as num?)?.toInt() ?? 10;
+    _caseSequence = (root['caseSequence'] as num?)?.toInt() ?? 105;
+    _catalogSequence = (root['catalogSequence'] as num?)?.toInt() ?? 100;
+    _remoteRevisions
+      ..clear()
+      ..addAll(
+        Map<String, dynamic>.from(
+          root['remoteRevisions'] as Map? ?? const <String, dynamic>{},
+        ).map((key, value) => MapEntry(key, (value as num?)?.toInt() ?? 0)),
+      );
   }
+
+  Future<T> _mutate<T>(
+    Future<T> Function() action, {
+    SyncOperation? completed,
+    int? revision,
+  }) => _mutex.run(() async {
+    await _ensureHydrated();
+    final before = _encodeSnapshot();
+    _stagedOperations.clear();
+    try {
+      final result = await action();
+      await _storage.commitMutation(
+        namespace: _namespace,
+        snapshot: _encodeSnapshot(),
+        operations: _stagedOperations,
+        completed: completed,
+        revision: revision,
+      );
+      return result;
+    } catch (_) {
+      _restoreSnapshot(before);
+      rethrow;
+    } finally {
+      _stagedOperations.clear();
+    }
+  });
+
+  Future<void> _persist() =>
+      _storage.writeSnapshot(_namespace, _encodeSnapshot());
+
+  String _encodeSnapshot() => jsonEncode({
+    'models': _models
+        .map(
+          (item) => {
+            'id': item.id,
+            'manufacturer': item.manufacturer,
+            'family': item.family,
+            'model': item.model,
+            'modality': item.modality,
+          },
+        )
+        .toList(),
+    'customers': _customers
+        .map(
+          (item) => {
+            'id': item.id,
+            'name': item.name,
+            'taxId': item.taxId,
+            'contactName': item.contactName,
+            'email': item.email,
+            'phone': item.phone,
+            'addressLine': item.addressLine,
+            'city': item.city,
+            'state': item.state,
+            'notes': item.notes,
+          },
+        )
+        .toList(),
+    'sites': _sites
+        .map(
+          (item) => {
+            'id': item.id,
+            'customerId': item.customerId,
+            'customer': item.customer,
+            'site': item.site,
+            'city': item.city,
+            'state': item.state,
+            'notes': item.notes,
+          },
+        )
+        .toList(),
+    'equipment': _equipment
+        .map(
+          (item) => {
+            'id': item.id,
+            'modelId': item.modelId,
+            'manufacturer': item.manufacturer,
+            'family': item.family,
+            'model': item.model,
+            'modality': item.modality,
+            'serialNumber': item.serialNumber,
+            'customer': item.customer,
+            'site': item.site,
+            'siteId': item.siteId,
+            'softwareVersion': item.softwareVersion,
+            'hardwareVersion': item.hardwareVersion,
+            'status': item.status,
+            'notes': item.notes,
+          },
+        )
+        .toList(),
+    'cases': _cases.map(_caseToJson).toList(),
+    'equipmentSequence': _equipmentSequence,
+    'caseSequence': _caseSequence,
+    'catalogSequence': _catalogSequence,
+    'remoteRevisions': _remoteRevisions,
+  });
 
   String _nextId(String prefix) {
     if (_useUuidIds) return _uuid.v4();

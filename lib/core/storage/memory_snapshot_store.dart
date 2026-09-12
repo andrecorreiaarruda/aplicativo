@@ -1,7 +1,10 @@
 import '../../data/sync/sync_operation.dart';
 import 'local_snapshot_store.dart';
+import 'outbox_mutation.dart';
+import 'async_mutex.dart';
 
 class MemorySnapshotStore implements LocalSnapshotStore {
+  final _mutex = AsyncMutex();
   final Map<String, String> _snapshots = {};
   final Map<String, SyncOperation> _operations = {};
   final Map<String, String> _metadata = {};
@@ -23,16 +26,50 @@ class MemorySnapshotStore implements LocalSnapshotStore {
   }
 
   @override
-  Future<void> enqueue(SyncOperation operation) async {
-    _operations[operation.id] = operation;
-  }
+  Future<void> commitMutation({
+    required String namespace,
+    String? snapshot,
+    List<SyncOperation> operations = const [],
+    SyncOperation? completed,
+    int? revision,
+  }) => _mutex.run(() async {
+    final next = mutateOutbox(
+      await pendingOperations(namespace),
+      namespace,
+      operations,
+      completed,
+      revision,
+    );
+    if (snapshot != null) _snapshots[namespace] = snapshot;
+    _operations.removeWhere((_, item) => item.namespace == namespace);
+    for (final item in next) {
+      _operations[item.id] = SyncOperation.fromRow(item.toRow());
+    }
+  });
+
+  @override
+  Future<SyncOperation?> claimOperation(String operationId) =>
+      _mutex.run(() async {
+        final item = _operations[operationId];
+        if (item == null) return null;
+        final claimed = item.copyWith(
+          attemptCount: item.attemptCount + 1,
+          lastAttemptAt: DateTime.now(),
+        );
+        _operations[operationId] = claimed;
+        return claimed;
+      });
+
+  @override
+  Future<void> enqueue(SyncOperation operation) =>
+      commitMutation(namespace: operation.namespace, operations: [operation]);
 
   @override
   Future<List<SyncOperation>> pendingOperations(String namespace) async {
     final result =
         _operations.values.where((item) => item.namespace == namespace).toList()
-          ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
-    return result;
+          ..sort((a, b) => a.queueOrder.compareTo(b.queueOrder));
+    return result.map((item) => SyncOperation.fromRow(item.toRow())).toList();
   }
 
   @override
@@ -40,7 +77,10 @@ class MemorySnapshotStore implements LocalSnapshotStore {
       _operations.values.where((item) => item.namespace == namespace).length;
 
   @override
-  Future<void> markAttempt(String operationId, {required String? error}) async {
+  Future<void> recordFailure(
+    String operationId, {
+    required String? error,
+  }) async {
     final current = _operations[operationId];
     if (current == null) return;
     _operations[operationId] = SyncOperation(
@@ -51,7 +91,8 @@ class MemorySnapshotStore implements LocalSnapshotStore {
       operation: current.operation,
       payload: current.payload,
       createdAt: current.createdAt,
-      attemptCount: current.attemptCount + 1,
+      attemptCount: current.attemptCount,
+      queueOrder: current.queueOrder,
       lastAttemptAt: DateTime.now(),
       lastError: error,
     );
