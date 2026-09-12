@@ -1,0 +1,30 @@
+# Configuração local de integração. Produção não é vinculada por este arquivo.
+project_id = "aplicativo"
+
+[api]
+enabled = true
+port = 54321
+# A implementação privilegiada permanece fora dos schemas da API.
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 17
+
+[db.seed]
+# O seed legado usa ON CONFLICT incompatível com as constraints de 0004.
+# Os testes de autorização criam fixtures próprias e fazem rollback.
+enabled = false
+sql_paths = ["./seed.sql"]
+
+[studio]
+enabled = false
+
+[analytics]
+enabled = false
+
+[edge_runtime]
+enabled = false

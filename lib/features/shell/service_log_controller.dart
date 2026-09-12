@@ -72,6 +72,7 @@ class ServiceLogController extends ChangeNotifier {
       _retryTimer?.cancel();
       await _loadLocalData(showLoading: false);
       await _refreshSyncStatus();
+      if (syncStatus?.hasPendingChanges == true) _scheduleRetry();
     } catch (error) {
       await _refreshSyncStatus();
       _scheduleRetry();

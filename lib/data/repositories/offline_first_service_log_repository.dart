@@ -175,7 +175,9 @@ class OfflineFirstServiceLogRepository
     StackTrace? firstStackTrace;
     try {
       final pending = await _queue.pending();
-      for (final operation in pending) {
+      for (final candidate in pending) {
+        final operation = await _store.claimOperation(candidate.id);
+        if (operation == null) continue;
         try {
           final result = await _remote.applyOperation(operation);
           if (result.conflict) {
@@ -183,7 +185,7 @@ class OfflineFirstServiceLogRepository
                 result.message ??
                 'O registro foi alterado no servidor e requer revisão.';
             final error = 'CONFLICT: $message';
-            await _store.markAttempt(operation.id, error: error);
+            await _store.recordFailure(operation.id, error: error);
             throw SyncConflictException(message, conflictId: result.conflictId);
           }
           if (!result.applied) {
@@ -191,14 +193,11 @@ class OfflineFirstServiceLogRepository
               result.message ?? 'O servidor recusou a operação offline.',
             );
           }
-          await _queue.markCompleted(operation);
-          if (result.revision != null) {
-            await _local.updateRemoteRevision(
-              operation.entityType,
-              operation.entityId,
-              result.revision!,
-            );
+          final revision = result.revision;
+          if (revision == null || revision < 1) {
+            throw StateError('Servidor não informou a revisão da operação.');
           }
+          await _local.acknowledge(operation, revision);
           if (operation.entityType == 'service_case' &&
               operation.payload['status'] == 'resolved') {
             try {

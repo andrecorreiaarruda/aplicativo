@@ -8,7 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'app.dart';
 import 'core/config/app_config.dart';
 import 'core/runtime/app_runtime.dart';
-import 'core/storage/memory_snapshot_store.dart';
+import 'features/recovery/storage_gate.dart';
 import 'core/storage/sqlite_snapshot_store.dart';
 import 'core/theme/orion_theme.dart';
 
@@ -36,8 +36,12 @@ Future<void> main() async {
         );
       }
 
-      final runtime = await _createRuntime();
-      runApp(ServiceLogApp(runtime: runtime));
+      runApp(
+        StorageGate(
+          openRuntime: _createRuntime,
+          builder: (runtime) => ServiceLogApp(runtime: runtime),
+        ),
+      );
     },
     (error, stack) {
       debugPrint('ORION ZONE ERROR: $error');
@@ -53,12 +57,7 @@ Future<AppRuntime> _createRuntime() async {
   } catch (error, stack) {
     debugPrint('ORION LOCAL DATABASE ERROR: $error');
     debugPrintStack(stackTrace: stack);
-    return AppRuntime(
-      localStore: MemorySnapshotStore(),
-      storageWarning:
-          'O banco local SQLite não pôde ser aberto. Nesta execução, os dados '
-          'ficarão somente na memória e serão perdidos ao fechar o aplicativo.',
-    );
+    rethrow;
   }
 }
 

@@ -7,10 +7,20 @@ abstract class LocalSnapshotStore {
   Future<void> writeSnapshot(String namespace, String value);
   Future<void> removeSnapshot(String namespace);
 
+  /// Commits the visible state and its outbox as one indivisible operation.
+  /// Acknowledgement also rebases unsent successors in the same transaction.
+  Future<void> commitMutation({
+    required String namespace,
+    String? snapshot,
+    List<SyncOperation> operations = const [],
+    SyncOperation? completed,
+    int? revision,
+  });
+  Future<SyncOperation?> claimOperation(String operationId);
   Future<void> enqueue(SyncOperation operation);
   Future<List<SyncOperation>> pendingOperations(String namespace);
   Future<int> pendingCount(String namespace);
-  Future<void> markAttempt(String operationId, {required String? error});
+  Future<void> recordFailure(String operationId, {required String? error});
   Future<void> removeOperation(String operationId);
 
   Future<String?> readMetadata(String namespace, String key);

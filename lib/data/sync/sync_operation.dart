@@ -10,6 +10,7 @@ class SyncOperation {
     required this.payload,
     required this.createdAt,
     this.attemptCount = 0,
+    this.queueOrder = 0,
     this.lastAttemptAt,
     this.lastError,
   });
@@ -22,10 +23,32 @@ class SyncOperation {
   final Map<String, dynamic> payload;
   final DateTime createdAt;
   final int attemptCount;
+  final int queueOrder;
   final DateTime? lastAttemptAt;
   final String? lastError;
 
   int get expectedRevision => (payload['_base_revision'] as num?)?.toInt() ?? 0;
+
+  SyncOperation copyWith({
+    Map<String, dynamic>? payload,
+    DateTime? createdAt,
+    int? attemptCount,
+    int? queueOrder,
+    DateTime? lastAttemptAt,
+    String? lastError,
+  }) => SyncOperation(
+    id: id,
+    namespace: namespace,
+    entityType: entityType,
+    entityId: entityId,
+    operation: operation,
+    payload: payload ?? this.payload,
+    createdAt: createdAt ?? this.createdAt,
+    attemptCount: attemptCount ?? this.attemptCount,
+    queueOrder: queueOrder ?? this.queueOrder,
+    lastAttemptAt: lastAttemptAt ?? this.lastAttemptAt,
+    lastError: lastError ?? this.lastError,
+  );
 
   String get payloadJson => jsonEncode(payload);
 
@@ -41,6 +64,7 @@ class SyncOperation {
       ),
       createdAt: DateTime.parse(row['created_at'] as String),
       attemptCount: (row['attempt_count'] as num?)?.toInt() ?? 0,
+      queueOrder: (row['queue_order'] as num?)?.toInt() ?? 0,
       lastAttemptAt: _parseDate(row['last_attempt_at']),
       lastError: row['last_error'] as String?,
     );
@@ -55,6 +79,7 @@ class SyncOperation {
     'payload': payloadJson,
     'created_at': createdAt.toUtc().toIso8601String(),
     'attempt_count': attemptCount,
+    'queue_order': queueOrder,
     'last_attempt_at': lastAttemptAt?.toUtc().toIso8601String(),
     'last_error': lastError,
   };

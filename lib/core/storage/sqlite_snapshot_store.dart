@@ -3,6 +3,8 @@ import 'package:sqflite_common/sqlite_api.dart';
 import '../../data/sync/sync_operation.dart';
 import 'local_database_factory.dart';
 import 'local_snapshot_store.dart';
+import 'local_database_configuration.dart';
+import 'outbox_mutation.dart';
 
 class SqliteSnapshotStore implements LocalSnapshotStore {
   SqliteSnapshotStore._({
@@ -14,12 +16,34 @@ class SqliteSnapshotStore implements LocalSnapshotStore {
   final Database _database;
   final String _storageLabel;
 
-  static Future<SqliteSnapshotStore> open() async {
-    final configuration = await createLocalDatabaseConfiguration();
+  static Future<SqliteSnapshotStore> open({
+    LocalDatabaseConfiguration? configuration,
+  }) async {
+    configuration ??= await createLocalDatabaseConfiguration();
     final database = await configuration.factory.openDatabase(
       configuration.path,
       options: OpenDatabaseOptions(
-        version: 1,
+        version: 2,
+        onUpgrade: (database, oldVersion, newVersion) async {
+          if (oldVersion < 2) {
+            await database.execute(
+              'ALTER TABLE sync_queue ADD COLUMN queue_order INTEGER NOT NULL DEFAULT 0',
+            );
+            await database.execute('''
+              WITH ranked AS (
+                SELECT id, ROW_NUMBER() OVER (
+                  PARTITION BY namespace ORDER BY created_at, rowid
+                ) AS position FROM sync_queue
+              )
+              UPDATE sync_queue SET queue_order = (
+                SELECT position FROM ranked WHERE ranked.id = sync_queue.id
+              )
+            ''');
+            await database.execute(
+              'CREATE INDEX idx_sync_queue_order ON sync_queue(namespace, queue_order)',
+            );
+          }
+        },
         onCreate: (database, version) async {
           await database.execute('''
             CREATE TABLE app_snapshots (
@@ -37,14 +61,15 @@ class SqliteSnapshotStore implements LocalSnapshotStore {
               operation TEXT NOT NULL,
               payload TEXT NOT NULL,
               created_at TEXT NOT NULL,
+              queue_order INTEGER NOT NULL DEFAULT 0,
               attempt_count INTEGER NOT NULL DEFAULT 0,
               last_attempt_at TEXT,
               last_error TEXT
             )
           ''');
           await database.execute('''
-            CREATE INDEX idx_sync_queue_namespace_created
-            ON sync_queue(namespace, created_at)
+            CREATE INDEX idx_sync_queue_order
+            ON sync_queue(namespace, queue_order)
           ''');
           await database.execute('''
             CREATE TABLE app_metadata (
@@ -99,13 +124,85 @@ class SqliteSnapshotStore implements LocalSnapshotStore {
   }
 
   @override
-  Future<void> enqueue(SyncOperation operation) async {
-    await _database.insert(
-      'sync_queue',
-      operation.toRow(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+  Future<void> commitMutation({
+    required String namespace,
+    String? snapshot,
+    List<SyncOperation> operations = const [],
+    SyncOperation? completed,
+    int? revision,
+  }) async {
+    await _database.transaction((txn) async {
+      final rows = await txn.query(
+        'sync_queue',
+        where: 'namespace = ?',
+        whereArgs: [namespace],
+        orderBy: 'queue_order ASC, rowid ASC',
+      );
+      final current = rows.map(SyncOperation.fromRow).toList();
+      final next = mutateOutbox(
+        current,
+        namespace,
+        operations,
+        completed,
+        revision,
+      );
+      if (snapshot != null) {
+        await txn.insert('app_snapshots', {
+          'namespace': namespace,
+          'payload': snapshot,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+      for (final old in current) {
+        if (!next.any((item) => item.id == old.id)) {
+          await txn.delete('sync_queue', where: 'id = ?', whereArgs: [old.id]);
+        }
+      }
+      for (final item in next) {
+        final exists = current.any((old) => old.id == item.id);
+        if (!exists) {
+          await txn.insert('sync_queue', item.toRow());
+        } else if (completed != null &&
+            item.attemptCount == 0 &&
+            item.entityId == completed.entityId &&
+            item.entityType == completed.entityType) {
+          await txn.update(
+            'sync_queue',
+            {'payload': item.payloadJson},
+            where: 'id = ?',
+            whereArgs: [item.id],
+          );
+        }
+      }
+    });
   }
+
+  @override
+  Future<SyncOperation?> claimOperation(String operationId) =>
+      _database.transaction((txn) async {
+        final rows = await txn.query(
+          'sync_queue',
+          where: 'id = ?',
+          whereArgs: [operationId],
+        );
+        if (rows.isEmpty) return null;
+        final item = SyncOperation.fromRow(rows.single);
+        final claimed = item.copyWith(
+          attemptCount: item.attemptCount + 1,
+          lastAttemptAt: DateTime.now(),
+        );
+        await txn.update(
+          'sync_queue',
+          claimed.toRow(),
+          where: 'id = ?',
+          whereArgs: [operationId],
+        );
+        return claimed;
+      });
+
+  @override
+  Future<void> enqueue(SyncOperation operation) =>
+      commitMutation(namespace: operation.namespace, operations: [operation]);
 
   @override
   Future<List<SyncOperation>> pendingOperations(String namespace) async {
@@ -113,7 +210,7 @@ class SqliteSnapshotStore implements LocalSnapshotStore {
       'sync_queue',
       where: 'namespace = ?',
       whereArgs: [namespace],
-      orderBy: 'created_at ASC',
+      orderBy: 'queue_order ASC, rowid ASC',
     );
     return rows.map(SyncOperation.fromRow).toList(growable: false);
   }
@@ -128,12 +225,14 @@ class SqliteSnapshotStore implements LocalSnapshotStore {
   }
 
   @override
-  Future<void> markAttempt(String operationId, {required String? error}) async {
+  Future<void> recordFailure(
+    String operationId, {
+    required String? error,
+  }) async {
     await _database.rawUpdate(
       '''
       UPDATE sync_queue
-      SET attempt_count = attempt_count + 1,
-          last_attempt_at = ?,
+      SET last_attempt_at = ?,
           last_error = ?
       WHERE id = ?
       ''',
