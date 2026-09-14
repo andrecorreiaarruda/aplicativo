@@ -4,6 +4,21 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/theme/orion_theme.dart';
 import '../../shared/widgets/orion_brand.dart';
 
+/// Mensagem a exibir depois de um cadastro que não abriu sessão.
+///
+/// O Supabase não revela quais e-mails já estão cadastrados: em vez de
+/// recusar, devolve sucesso com a lista de identidades vazia e não envia
+/// mensagem nenhuma. Tratar isso como cadastro novo manda o usuário
+/// esperar um e-mail que nunca chega — foi o que aconteceu em campo.
+String? signUpFeedback({required bool hasSession, required int? identityCount}) {
+  if (hasSession) return null;
+  if (identityCount == 0) {
+    return 'Este e-mail já tem conta. Volte para "Entrar" e use a sua senha. '
+        'Se a esqueceu, peça a redefinição ao administrador.';
+  }
+  return 'Conta criada. Confirme o e-mail antes de entrar no sistema.';
+}
+
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -39,11 +54,12 @@ class _LoginScreenState extends State<LoginScreen> {
           email: _email.text.trim(),
           password: _password.text,
         );
-        if (response.session == null && mounted) {
-          setState(() {
-            _message =
-                'Conta criada. Confirme o e-mail antes de entrar no sistema.';
-          });
+        final feedback = signUpFeedback(
+          hasSession: response.session != null,
+          identityCount: response.user?.identities?.length,
+        );
+        if (feedback != null && mounted) {
+          setState(() => _message = feedback);
         }
       } else {
         await Supabase.instance.client.auth.signInWithPassword(
