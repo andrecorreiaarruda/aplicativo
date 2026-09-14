@@ -606,6 +606,43 @@ void main() {
     },
   );
 
+  test('mensagem de bloqueio concorda em número', () async {
+    final repository = DemoServiceLogRepository.seeded(
+      storage: MemorySnapshotStore(),
+    );
+    final catalogo = await repository.fetchEquipmentCatalog();
+
+    // Cliente novo, com um único equipamento e nenhum atendimento.
+    final clienteId = await repository.createCustomer(
+      const CustomerDraft(name: 'Hospital Concordância'),
+    );
+    final localId = await repository.createSite(
+      SiteDraft(customerId: clienteId, siteName: 'Sala única'),
+    );
+    await repository.createEquipment(
+      EquipmentDraft(
+        modelId: catalogo.models.first.id,
+        serialNumber: 'CONCORD-001',
+        siteId: localId,
+        status: 'operational',
+      ),
+    );
+
+    await expectLater(
+      repository.archiveCustomer(clienteId),
+      throwsA(
+        isA<StateError>().having(
+          (e) => e.message,
+          'mensagem',
+          allOf(
+            contains('1 equipamento ainda depende'),
+            isNot(contains('dependem')),
+          ),
+        ),
+      ),
+    );
+  });
+
   test('estado local é reidratado pelo armazenamento persistente', () async {
     final store = MemorySnapshotStore();
     final firstRepository = DemoServiceLogRepository.seeded(

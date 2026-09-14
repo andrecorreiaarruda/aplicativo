@@ -158,9 +158,29 @@ linhas do corpo, e havia três cópias divergentes no repositório. A partir da
 `0011`, mudanças na lógica alteram o corpo e mudanças no tratamento de erro
 alteram o invólucro, sem que uma exija copiar a outra.
 
+## Paginação do download
+
+Todas as leituras remotas percorrem a tabela inteira em páginas, em vez de
+aceitar o corte do servidor. Antes, os atendimentos tinham `limit(300)`
+explícito e as demais consultas eram truncadas em silêncio pelo `max_rows`
+do PostgREST — não havia como distinguir "esta é a base inteira" de "esta é
+a primeira página".
+
+O percurso é por chave (`id`), não por deslocamento. Deslocamento é instável
+quando a base muda durante a leitura: um registro inserido antes da posição
+atual empurra os demais e faz a página seguinte repetir ou pular linhas.
+A ordem de exibição é aplicada depois, sobre o conjunto completo.
+
+Ultrapassar o limite de páginas lança erro em vez de devolver resultado
+parcial. Um corte silencioso é o defeito que a paginação existe para
+eliminar, e devolvê-lo por outro caminho seria o mesmo problema com outro
+nome. Alcançar esse limite indica base grande demais para carga integral —
+o caso da sincronização incremental, ainda não implementada.
+
 ## Limites atuais
 
-- pull remoto completo, ainda não incremental;
+- pull remoto completo e paginado, ainda não incremental: toda
+  sincronização relê a base inteira;
 - conflitos são detectados e isolados, mas não resolvidos pela interface;
 - exclusões e tombstones ainda não estão expostos no Flutter;
 - anexos não são armazenados offline;

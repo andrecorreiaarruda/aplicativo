@@ -827,9 +827,13 @@ class DemoServiceLogRepository
         if (atendimentos > 0)
           _plural(atendimentos, 'atendimento', 'atendimentos'),
       ];
+      // O verbo acompanha o total, não cada parte: "1 equipamento depende",
+      // mas "1 equipamento e 2 atendimentos dependem".
+      final unico =
+          partes.length == 1 && equipamentos.length + atendimentos == 1;
       throw StateError(
-        'Não é possível arquivar: ${partes.join(' e ')} ainda dependem '
-        'deste cliente. Arquive-os primeiro.',
+        'Não é possível arquivar: ${partes.join(' e ')} ainda '
+        '${unico ? 'depende' : 'dependem'} deste cliente. Arquive-os primeiro.',
       );
     }
 
@@ -885,8 +889,7 @@ class DemoServiceLogRepository
   }
 
   @override
-  Future<void> archiveCase(String id) =>
-      _mutate(() => _archiveCase(id));
+  Future<void> archiveCase(String id) => _mutate(() => _archiveCase(id));
 
   Future<void> _archiveCase(String id) async {
     await _ensureHydrated();
@@ -954,8 +957,7 @@ class DemoServiceLogRepository
   }
 
   @override
-  Future<void> restoreCase(String id) =>
-      _mutate(() => _restoreCase(id));
+  Future<void> restoreCase(String id) => _mutate(() => _restoreCase(id));
 
   Future<void> _restoreCase(String id) async {
     await _ensureHydrated();
@@ -1120,7 +1122,9 @@ class DemoServiceLogRepository
   Future<List<SimilarCaseResult>> searchSimilarCases(SimilarCaseQuery query) =>
       _mutex.run(() => _searchSimilarCases(query));
 
-  Future<List<SimilarCaseResult>> _searchSimilarCases(SimilarCaseQuery query) async {
+  Future<List<SimilarCaseResult>> _searchSimilarCases(
+    SimilarCaseQuery query,
+  ) async {
     await _ensureHydrated();
     await _latency();
     final queryTokens = _tokens(

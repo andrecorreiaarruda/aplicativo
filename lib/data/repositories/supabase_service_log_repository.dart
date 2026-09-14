@@ -1,5 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../sync/keyset_pagination.dart';
+
 import '../models/equipment.dart';
 import '../models/service_case.dart';
 import 'service_log_repository.dart';
@@ -15,10 +17,9 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
 
   @override
   Future<List<Equipment>> fetchEquipments() async {
-    final response = await _client
-        .from('equipments')
-        .select('''
+    final rows = await _fetchAll('equipments', '''
       id,
+      created_at,
       equipment_model_id,
       site_id,
       serial_number,
@@ -38,20 +39,26 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
         name,
         customers(name)
       )
-    ''')
-        .isFilter('deleted_at', null)
-        .order('created_at', ascending: false);
+    ''');
 
-    return (response as List)
-        .map((row) => Equipment.fromSupabase(_map(row)))
+    // A ordem de exibição é aplicada sobre o conjunto completo: o
+    // percurso paginado é por `id`, que não tem significado visual.
+    final equipment = rows
+        .map((row) => Equipment.fromSupabase(row))
         .toList(growable: false);
+    final byId = {for (final row in rows) row['id'] as String: row};
+    final ordered = [...equipment]
+      ..sort((a, b) {
+        final da = byId[a.id]?['created_at'] as String? ?? '';
+        final db = byId[b.id]?['created_at'] as String? ?? '';
+        return db.compareTo(da);
+      });
+    return List.unmodifiable(ordered);
   }
 
   @override
   Future<List<ServiceCase>> fetchCases() async {
-    final response = await _client
-        .from('service_cases')
-        .select('''
+    final rows = await _fetchAll('service_cases', '''
       id,
       case_number,
       equipment_id,
@@ -89,33 +96,30 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
           manufacturers(name)
         )
       )
-    ''')
-        .isFilter('deleted_at', null)
-        .order('opened_at', ascending: false)
-        .limit(300);
+    ''');
 
-    return (response as List)
-        .map((row) => ServiceCase.fromSupabase(_map(row)))
-        .toList(growable: false);
+    // O limite de 300 saiu daqui: truncava o histórico sem aviso, e
+    // o PostgREST ainda somava o próprio corte por cima. A ordenação
+    // por abertura é aplicada ao conjunto completo.
+    final cases = rows.map((row) => ServiceCase.fromSupabase(row)).toList()
+      ..sort((a, b) => b.openedAt.compareTo(a.openedAt));
+    return List.unmodifiable(cases);
   }
 
   @override
   Future<EquipmentCatalog> fetchEquipmentCatalog() async {
-    final responses = await Future.wait<dynamic>([
-      _client
-          .from('equipment_models')
-          .select('''
+    // As três consultas também eram cortadas pelo PostgREST, em silêncio.
+    // Nenhuma tinha limite explícito, o que tornava o truncamento ainda
+    // menos visível que o dos atendimentos.
+    final responses = await Future.wait<List<Map<String, dynamic>>>([
+      _fetchAll('equipment_models', '''
         id,
         family,
         model,
         modality,
         manufacturers(name)
-      ''')
-          .isFilter('deleted_at', null)
-          .order('model'),
-      _client
-          .from('customers')
-          .select('''
+      '''),
+      _fetchAll('customers', '''
         id,
         name,
         tax_id,
@@ -126,12 +130,8 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
         city,
         state,
         notes
-      ''')
-          .isFilter('deleted_at', null)
-          .order('name'),
-      _client
-          .from('sites')
-          .select('''
+      '''),
+      _fetchAll('sites', '''
         id,
         customer_id,
         name,
@@ -139,9 +139,7 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
         state,
         notes,
         customers(name)
-      ''')
-          .isFilter('deleted_at', null)
-          .order('name'),
+      '''),
     ]);
 
     final models = (responses[0] as List)
@@ -192,7 +190,16 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
         })
         .toList(growable: false);
 
-    return EquipmentCatalog(models: models, customers: customers, sites: sites);
+    // Ordem de exibição restaurada sobre o conjunto completo — o percurso
+    // paginado usa `id`, que não serve para apresentação.
+    int porTexto(String a, String b) =>
+        a.toLowerCase().compareTo(b.toLowerCase());
+
+    return EquipmentCatalog(
+      models: [...models]..sort((a, b) => porTexto(a.model, b.model)),
+      customers: [...customers]..sort((a, b) => porTexto(a.name, b.name)),
+      sites: [...sites]..sort((a, b) => porTexto(a.site, b.site)),
+    );
   }
 
   @override
@@ -634,80 +641,97 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
 
   @override
   Future<ArchivedRecords> fetchArchived() async {
-    final results = await Future.wait<dynamic>([
-      _client
-          .from('customers')
-          .select()
-          .not('deleted_at', 'is', null)
-          .order('deleted_at', ascending: false),
-      _client
-          .from('equipments')
-          .select('''
-      id,
-      equipment_model_id,
-      site_id,
-      serial_number,
-      software_version,
-      hardware_version,
-      status,
-      notes,
-      deleted_at,
-      equipment_models(
+    // Arquivados também eram cortados pelo PostgREST. Mesma paginação.
+    final results = await Future.wait<List<Map<String, dynamic>>>([
+      _fetchAll('customers', '''
+        id, name, tax_id, contact_name, email, phone,
+        address_line, city, state, notes, deleted_at
+      ''', archived: true),
+      _fetchAll('equipments', '''
         id,
-        family,
-        model,
-        modality,
-        manufacturers(name)
+        equipment_model_id,
+        site_id,
+        serial_number,
+        software_version,
+        hardware_version,
+        status,
+        notes,
+        deleted_at,
+        equipment_models(
+          id,
+          family,
+          model,
+          modality,
+          manufacturers(name)
+        ),
+        sites(
+          id,
+          name,
+          customers(name)
+        )
+      ''', archived: true),
+      _fetchAll(
+        'service_cases',
+        'id, case_number, reported_failure, opened_at, deleted_at',
+        archived: true,
       ),
-      sites(
-        id,
-        name,
-        customers(name)
-      )
-    ''')
-          .not('deleted_at', 'is', null)
-          .order('deleted_at', ascending: false),
-      _client
-          .from('service_cases')
-          .select('id, case_number, reported_failure, opened_at, deleted_at')
-          .not('deleted_at', 'is', null)
-          .order('deleted_at', ascending: false),
     ]);
 
+    // O percurso paginado é por `id`; a ordem de apresentação —
+    // arquivados mais recentes primeiro — é aplicada aqui.
     return ArchivedRecords(
-      customers: (results[0] as List).map((row) {
-        final json = _map(row);
-        return CustomerOption(
-          id: json['id'] as String,
-          name: json['name'] as String? ?? '',
-          taxId: json['tax_id'] as String?,
-          contactName: json['contact_name'] as String?,
-          email: json['email'] as String?,
-          phone: json['phone'] as String?,
-          addressLine: json['address_line'] as String?,
-          city: json['city'] as String?,
-          state: json['state'] as String?,
-          notes: json['notes'] as String?,
-          archivedAt: DateTime.tryParse(json['deleted_at'] as String? ?? ''),
-        );
-      }).toList(),
-      equipment: (results[1] as List).map((row) {
-        final json = _map(row);
-        return Equipment.fromSupabase(json);
-      }).toList(),
-      cases: (results[2] as List).map((row) {
-        final item = _map(row);
-        return ServiceCaseSummary(
-          id: item['id'] as String,
-          caseNumber: (item['case_number'] as num?)?.toInt() ?? 0,
-          equipmentLabel: '',
-          reportedFailure: item['reported_failure'] as String? ?? '',
-          openedAt:
-              DateTime.tryParse(item['opened_at'] as String? ?? '') ??
-              DateTime.now(),
-          archivedAt: DateTime.tryParse(item['deleted_at'] as String? ?? ''),
-        );
-      }).toList(),
+      customers:
+          (results[0] as List).map((row) {
+            final json = _map(row);
+            return CustomerOption(
+              id: json['id'] as String,
+              name: json['name'] as String? ?? '',
+              taxId: json['tax_id'] as String?,
+              contactName: json['contact_name'] as String?,
+              email: json['email'] as String?,
+              phone: json['phone'] as String?,
+              addressLine: json['address_line'] as String?,
+              city: json['city'] as String?,
+              state: json['state'] as String?,
+              notes: json['notes'] as String?,
+              archivedAt: DateTime.tryParse(
+                json['deleted_at'] as String? ?? '',
+              ),
+            );
+          }).toList()..sort(
+            (a, b) => (b.archivedAt ?? DateTime(0)).compareTo(
+              a.archivedAt ?? DateTime(0),
+            ),
+          ),
+      equipment:
+          (results[1] as List).map((row) {
+            final json = _map(row);
+            return Equipment.fromSupabase(json);
+          }).toList()..sort(
+            (a, b) => (b.archivedAt ?? DateTime(0)).compareTo(
+              a.archivedAt ?? DateTime(0),
+            ),
+          ),
+      cases:
+          (results[2] as List).map((row) {
+            final item = _map(row);
+            return ServiceCaseSummary(
+              id: item['id'] as String,
+              caseNumber: (item['case_number'] as num?)?.toInt() ?? 0,
+              equipmentLabel: '',
+              reportedFailure: item['reported_failure'] as String? ?? '',
+              openedAt:
+                  DateTime.tryParse(item['opened_at'] as String? ?? '') ??
+                  DateTime.now(),
+              archivedAt: DateTime.tryParse(
+                item['deleted_at'] as String? ?? '',
+              ),
+            );
+          }).toList()..sort(
+            (a, b) => (b.archivedAt ?? DateTime(0)).compareTo(
+              a.archivedAt ?? DateTime(0),
+            ),
+          ),
     );
   }
 
@@ -723,6 +747,32 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
         .eq('user_id', user.id)
         .single();
     return profile['organization_id'] as String;
+  }
+
+  /// Lê a tabela inteira, em páginas, em vez de aceitar o corte do
+  /// PostgREST. Percorre por `id` porque a ordem de exibição não pode
+  /// servir de cursor: `name` e `created_at` repetem, e chave repetida
+  /// faz a página seguinte pular ou repetir registros.
+  ///
+  /// Quem chama ordena o resultado completo.
+  /// [archived] escolhe o lado do `deleted_at`: nulo traz os ativos,
+  /// verdadeiro traz os arquivados, e `null` não filtra.
+  Future<List<Map<String, dynamic>>> _fetchAll(
+    String table,
+    String columns, {
+    bool? archived = false,
+  }) {
+    return fetchAllPages<Map<String, dynamic>>(
+      keyOf: (row) => row['id'] as String,
+      readPage: (after, limit) async {
+        var query = _client.from(table).select(columns);
+        if (archived == false) query = query.isFilter('deleted_at', null);
+        if (archived == true) query = query.not('deleted_at', 'is', null);
+        if (after != null) query = query.gt('id', after);
+        final page = await query.order('id', ascending: true).limit(limit);
+        return (page as List).map(_map).toList(growable: false);
+      },
+    );
   }
 
   static Map<String, dynamic> _map(dynamic value) {
