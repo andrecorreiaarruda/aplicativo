@@ -43,6 +43,14 @@ você exporta o extrato ou a fatura pelo app do banco e o Cofre lê.
   colunas.
 - **Lançamento manual**, para o que não vem em arquivo.
 
+O caminho curto: no app do banco, na hora de exportar, toque em **Compartilhar
+e escolha o Cofre**. O app se registra no iOS como leitor de OFX, QFX, CSV e TSV
+e aparece sozinho na folha de compartilhamento, sem passar pelo app Arquivos. O
+extrato chega e a tela de revisão abre direto — a conferência continua
+obrigatória, receber o arquivo mais rápido não pula essa etapa. O endereço
+`cofre://importar` abre a tela de importação vazia, para um atalho na tela de
+início.
+
 Reimportar o mesmo período não duplica nada: a deduplicação usa o `FITID` do OFX
 quando existe e, quando não existe, uma impressão digital de
 conta + data + valor + descrição normalizada.
@@ -145,8 +153,10 @@ recomeçar** limpa. Para testar a importação, use os arquivos em
 ## Como o código está organizado
 
 ```
+Config/         Info.plist com os tipos de arquivo que o app abre
 Cofre/
-  App/          entrada, trava por Face ID, preferências, contêiner SwiftData e dados iniciais
+  App/          entrada, trava por Face ID, preferências, caixa de entrada de arquivos
+                compartilhados, contêiner SwiftData e dados iniciais
   Models/       modelos SwiftData: conta, cartão, lançamento, categoria, orçamento, meta, plano
   Core/         dinheiro em Decimal, datas e MonthKey, ciclo de fatura, normalização de texto,
                 tema, o FinanceEngine e o EnvelopeEngine — todo o cálculo em funções puras

@@ -19,7 +19,44 @@ struct RootView: View {
 
 struct MainTabView: View {
     @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var inbox: ImportInbox
     @State private var selection = 0
+
+    /// O que a folha de importação deve mostrar. Um `item` só, em vez de dois
+    /// modificadores `.sheet` na mesma view — empilhar dois faz o SwiftUI
+    /// ignorar um deles.
+    private enum ImportSheet: Identifiable {
+        case file(IncomingFile)
+        case blank
+
+        var id: String {
+            switch self {
+            case .file(let file): return file.id.uuidString
+            case .blank: return "blank"
+            }
+        }
+    }
+
+    private var importSheet: Binding<ImportSheet?> {
+        Binding(
+            get: {
+                if let file = inbox.current { return .file(file) }
+                if inbox.wantsEmptyImport { return .blank }
+                return nil
+            },
+            set: { newValue in
+                guard newValue == nil else { return }
+                // Fechar sem importar também descarta o arquivo: ele já foi
+                // apresentado e ficar reaparecendo a cada abertura seria pior
+                // do que perder uma cópia que o banco refaz em dois toques.
+                if inbox.current != nil {
+                    inbox.finishCurrent()
+                } else {
+                    inbox.wantsEmptyImport = false
+                }
+            }
+        )
+    }
 
     var body: some View {
         TabView(selection: $selection) {
@@ -44,6 +81,14 @@ struct MainTabView: View {
                 .tag(4)
         }
         .onAppear { selection = settings.startTab }
+        .sheet(item: importSheet) { sheet in
+            switch sheet {
+            case .file(let file):
+                ImportFlowView(incomingFile: file.url)
+            case .blank:
+                ImportFlowView()
+            }
+        }
     }
 }
 

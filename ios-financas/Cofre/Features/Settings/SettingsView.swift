@@ -36,6 +36,12 @@ struct SettingsView: View {
 
                 Section {
                     NavigationLink {
+                        SharingHelpView()
+                    } label: {
+                        Label("Receber extrato pelo Compartilhar", systemImage: "square.and.arrow.up")
+                    }
+
+                    NavigationLink {
                         ReadOnlyExplanationView()
                     } label: {
                         Label("O que este app não faz", systemImage: "hand.raised")
@@ -290,5 +296,81 @@ struct SyncProvidersView: View {
                 ToolbarItem(placement: .confirmationAction) { Button("Pronto") { dismiss() } }
             }
         }
+    }
+}
+
+/// Ensina o caminho curto da importação e o atalho por URL.
+struct SharingHelpView: View {
+    var body: some View {
+        List {
+            Section {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Do banco para cá em três toques")
+                        .font(.title3.weight(.semibold))
+                    Text("O Cofre se registra no iOS como um app que abre extratos. Ele aparece sozinho na folha de compartilhamento quando o arquivo é OFX, QFX, CSV ou TSV.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 4)
+            }
+
+            Section("O caminho") {
+                step(1, "No app do banco, exporte o extrato ou a fatura.")
+                step(2, "Na tela de exportar, toque em Compartilhar.")
+                step(3, "Escolha o Cofre na lista de apps.")
+                step(4, "O app abre já na revisão dos lançamentos.")
+            }
+
+            Section {
+                InlineNote(
+                    symbol: "checkmark.shield",
+                    text: "A revisão continua obrigatória. Nada entra no seu extrato sem você ver antes — receber o arquivo mais rápido não pula essa conferência."
+                )
+                InlineNote(
+                    symbol: "trash",
+                    text: "Se você fechar a tela sem importar, a cópia do arquivo é descartada. Basta compartilhar de novo pelo banco."
+                )
+            }
+
+            Section {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("cofre://importar")
+                        .font(.callout.monospaced())
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(Color(.tertiarySystemFill))
+                        )
+                    Text("Esse endereço abre a tela de importação direto. Dá para pôr num atalho na tela de início pelo app Atalhos, com a ação «Abrir URL».")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 4)
+            } header: {
+                Text("Atalho na tela de início")
+            }
+
+            Section {
+                InlineNote(
+                    symbol: "questionmark.circle",
+                    text: "Não achou o Cofre na folha de compartilhamento? Role a linha de apps até o fim e toque em «Mais». O iOS às vezes demora uma reinicialização para registrar os tipos de arquivo de um app recém-instalado."
+                )
+            }
+        }
+        .navigationTitle("Compartilhar")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func step(_ number: Int, _ text: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text("\(number)")
+                .font(.caption.weight(.bold))
+                .frame(width: 20, height: 20)
+                .background(Circle().fill(Color.accentColor.opacity(0.15)))
+                .foregroundStyle(Color.accentColor)
+            Text(text).font(.subheadline)
+        }
+        .padding(.vertical, 2)
     }
 }

@@ -5,7 +5,9 @@ import UniformTypeIdentifiers
 /// Importação de extrato em quatro passos: escolher o destino, escolher o
 /// arquivo, conferir as colunas (só CSV) e revisar antes de gravar.
 ///
-/// Nada é gravado até você tocar em "Importar" na revisão.
+/// Nada é gravado até você tocar em "Importar" na revisão — inclusive quando o
+/// arquivo chega pronto pelo Compartilhar do app do banco. A revisão é a rede de
+/// segurança contra um extrato errado, e ela não é pulada por conveniência.
 struct ImportFlowView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
@@ -18,6 +20,10 @@ struct ImportFlowView: View {
     /// Quando a importação é aberta a partir de uma conta ou cartão, o destino
     /// já vem escolhido.
     var preselected: ImportDestination?
+
+    /// Arquivo que já chegou pronto — vindo do Compartilhar do app do banco.
+    /// Quando existe, o passo de escolher arquivo é pulado.
+    var incomingFile: URL?
 
     private enum Step { case destination, file, mapping, review, done }
 
@@ -78,6 +84,7 @@ struct ImportFlowView: View {
             }
             .onAppear {
                 if preselected != nil { step = .file }
+                if let incomingFile { loadIncoming(incomingFile) }
             }
         }
     }
@@ -132,9 +139,21 @@ struct ImportFlowView: View {
                 }
             }
 
+            if fileData != nil {
+                Section {
+                    InlineNote(symbol: "doc.text", text: "Arquivo recebido: \(fileName)")
+                }
+            }
+
             Section {
                 Button {
-                    step = .file
+                    // Com o arquivo já em mãos, escolher o destino é o último
+                    // passo antes da prévia.
+                    if fileData != nil {
+                        parseLoadedFile()
+                    } else {
+                        step = .file
+                    }
                 } label: {
                     Text("Continuar").frame(maxWidth: .infinity)
                 }
@@ -212,6 +231,10 @@ struct ImportFlowView: View {
             }
 
             Section {
+                InlineNote(
+                    symbol: "square.and.arrow.up",
+                    text: "Atalho: na hora de exportar, toque em Compartilhar e escolha o Cofre. O extrato vem direto para cá, sem passar pelo app Arquivos."
+                )
                 InlineNote(symbol: "doc.text", text: "Formatos aceitos: OFX, QFX, CSV, TSV e TXT.")
                 InlineNote(symbol: "arrow.triangle.2.circlepath", text: "Pode importar o mesmo período de novo: o que já existe é reconhecido e não duplica.")
             }
@@ -500,26 +523,76 @@ struct ImportFlowView: View {
             defer { if needsScope { url.stopAccessingSecurityScopedResource() } }
 
             do {
-                let data = try Data(contentsOf: url)
-                fileData = data
+                fileData = try Data(contentsOf: url)
                 fileName = url.lastPathComponent
-
-                let ext = url.pathExtension.lowercased()
-                if ext == "ofx" || ext == "qfx" {
-                    statement = try OFXParser.parse(data: data, fileName: fileName)
-                    buildPreview()
-                } else {
-                    let parsed = try CSVReader.read(data: data)
-                    let suggestion = CSVImporter.suggestMapping(for: parsed)
-                    table = parsed
-                    mapping = suggestion.mapping
-                    presetID = suggestion.preset.id
-                    step = .mapping
-                }
+                parseLoadedFile()
             } catch {
                 errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             }
         }
+    }
+
+    /// Arquivo entregue pelo sistema: a cópia já está no nosso contêiner, então
+    /// não há escopo de segurança a pedir.
+    private func loadIncoming(_ url: URL) {
+        do {
+            fileData = try Data(contentsOf: url)
+            fileName = url.lastPathComponent
+        } catch {
+            errorMessage = ImportError.unreadableFile.errorDescription
+            return
+        }
+
+        // Com uma conta só cadastrada não há o que escolher — o atrito de um
+        // passo obrigatório aqui não compra nada.
+        if preselected == nil, destinationID == nil, accounts.count + cards.count == 1 {
+            destinationID = accounts.first?.id ?? cards.first?.id
+        }
+
+        if destination != nil {
+            parseLoadedFile()
+        } else {
+            step = .destination
+        }
+    }
+
+    /// Decide entre OFX e CSV e avança para a prévia ou para o mapeamento de
+    /// colunas. Serve tanto para o arquivo escolhido à mão quanto para o
+    /// compartilhado.
+    private func parseLoadedFile() {
+        guard let data = fileData else { return }
+        statement = nil
+
+        do {
+            if isOFX(data: data, fileName: fileName) {
+                statement = try OFXParser.parse(data: data, fileName: fileName)
+                buildPreview()
+            } else {
+                let parsed = try CSVReader.read(data: data)
+                let suggestion = CSVImporter.suggestMapping(for: parsed)
+                table = parsed
+                mapping = suggestion.mapping
+                presetID = suggestion.preset.id
+                step = .mapping
+            }
+        } catch {
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
+    /// Pela extensão e, quando ela não ajuda, pelo conteúdo — o Compartilhar de
+    /// alguns bancos entrega o arquivo sem extensão.
+    private func isOFX(data: Data, fileName: String) -> Bool {
+        let ext = (fileName as NSString).pathExtension.lowercased()
+        if ext == "ofx" || ext == "qfx" { return true }
+        if ext == "csv" || ext == "tsv" { return false }
+
+        let head = data.prefix(4096)
+        guard let text = String(data: head, encoding: .utf8) ?? String(data: head, encoding: .isoLatin1) else {
+            return false
+        }
+        let upper = text.uppercased()
+        return upper.contains("<OFX") || upper.contains("OFXHEADER")
     }
 
     private func buildPreview() {

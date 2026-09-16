@@ -165,6 +165,7 @@
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/Cofre-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Cofre;
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Usamos o Face ID para manter seus dados financeiros protegidos neste aparelho.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -198,6 +199,7 @@
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/Cofre-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Cofre;
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Usamos o Face ID para manter seus dados financeiros protegidos neste aparelho.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";

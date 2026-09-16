@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Os tipos de arquivo que o Cofre sabe abrir. É o que faz o app aparecer na
+	  folha de compartilhamento quando você exporta o extrato pelo app do banco:
+	  bancos → Compartilhar → Cofre, sem passar pelo app Arquivos.
+
+	  Só OFX, QFX, CSV e TSV são declarados. Registrar algo genérico como
+	  public.data faria o Cofre aparecer para qualquer arquivo do sistema.
+	-->
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Extrato OFX</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>br.com.cofre.ofx</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Extrato em planilha</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.comma-separated-values-text</string>
+				<string>public.tab-separated-values-text</string>
+			</array>
+		</dict>
+	</array>
+
+	<!--
+	  O sistema não tem um tipo próprio para OFX, então declaramos um e o
+	  amarramos às extensões .ofx e .qfx.
+	-->
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>br.com.cofre.ofx</string>
+			<key>UTTypeDescription</key>
+			<string>Extrato bancário OFX</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.text</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>ofx</string>
+					<string>qfx</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
+
+	<!--
+	  cofre://importar abre direto a tela de importação. Serve para você montar
+	  um atalho na tela de início ou pedir à Siri.
+	-->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>br.com.cofre</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>cofre</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>
