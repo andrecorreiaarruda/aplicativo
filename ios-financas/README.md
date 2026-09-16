@@ -79,9 +79,28 @@ brasileiros já mapeados: iFood, Enel, Drogasil, Ipiranga, Vivo…) e por regras
 aprendidas: quando você corrige a categoria de um lançamento, o app guarda o
 padrão do estabelecimento e acerta sozinho na próxima importação.
 
-**Metas de gasto** — teto por categoria, com valor padrão e ajuste por mês.
-As barras trazem um marcador do ritmo esperado para o dia de hoje, para você
-saber se está adiantado ou atrasado no consumo do orçamento, não só se estourou.
+**Envelopes** — o método clássico, digital. Você separa um valor por categoria
+no início do mês e cada gasto tira de lá. O que diferencia de um teto mensal é
+que **o saldo atravessa o mês**: gastou R$ 740 do envelope de R$ 900? Outubro
+começa com R$ 1.060 dentro dele. Estourou? O buraco vai junto, porque o dinheiro
+saiu de algum lugar de verdade.
+
+Cada envelope escolhe o que acontece na virada:
+
+| Política | Sobra | Falta | Para quê |
+|---|---|---|---|
+| Acumula sobra e falta | atravessa | atravessa | o padrão, e o método de verdade |
+| Acumula só a sobra | atravessa | perdoada | evita que um mês ruim contamine os seguintes |
+| Zera todo mês | descartada | perdoada | teto mensal comum, para delivery e afins |
+
+Dá para **transferir entre envelopes** — tirar do lazer e pôr no mercado, como
+se fazia com as notas de papel — e as duas pontas ficam ligadas, então desfazer
+uma desfaz a outra. Reforços e retiradas manuais também ficam registrados.
+
+O número grande de cada linha é o **disponível**, não o gasto: você olha o que
+tem, não o quanto falta para estourar. As barras trazem um marcador do ritmo
+esperado para o dia de hoje, e a tela mostra quanto da sua renda ainda não tem
+envelope nenhum — a pergunta central do método.
 
 **Divisão da renda** — plano 50/30/20 editável (fatias, percentuais e cores),
 comparando planejado com realizado. A renda base pode ser digitada ou calculada
@@ -130,10 +149,11 @@ Cofre/
   App/          entrada, trava por Face ID, preferências, contêiner SwiftData e dados iniciais
   Models/       modelos SwiftData: conta, cartão, lançamento, categoria, orçamento, meta, plano
   Core/         dinheiro em Decimal, datas e MonthKey, ciclo de fatura, normalização de texto,
-                tema, e o FinanceEngine — todo o cálculo em funções puras
+                tema, o FinanceEngine e o EnvelopeEngine — todo o cálculo em funções puras
   Import/       leitor de OFX, leitor de CSV, categorizador e o serviço de importação
   Sync/         o protocolo só-leitura e os provedores (arquivo, e o agregador desligado)
-  Features/     uma pasta por tela: Resumo, Contas, Cartões, Lançamentos, Planejar, Importar, Ajustes
+  Features/     uma pasta por tela: Resumo, Contas, Cartões, Lançamentos, Planejar (envelopes,
+                divisão da renda, metas, contas fixas, categorias), Importar, Ajustes
   Shared/       componentes de interface reaproveitados
 ```
 
@@ -146,6 +166,14 @@ do `Double` vira diferença de centavo e, no fim do mês, saldo que não bate.
 e devolve números; não toca no banco. As telas buscam com `@Query` e passam os
 dados. Isso contorna as limitações de predicado do SwiftData e deixa cada número
 conferível isoladamente.
+
+**Envelope não se calcula sozinho.** O saldo de setembro depende de agosto, que
+depende de julho. Por isso o `EnvelopeEngine` varre os meses desde o início
+escolhido numa passada só, acumulando todos os envelopes ao mesmo tempo, em vez
+de fazer uma consulta por envelope. O mês inicial é a âncora que impede o
+cálculo de voltar no tempo para sempre — e ele é gravado em disco na primeira
+abertura, senão cada virada de mês viraria um novo "início" e apagaria o
+acúmulo.
 
 ## Limites conhecidos
 

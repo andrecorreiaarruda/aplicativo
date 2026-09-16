@@ -186,53 +186,7 @@ enum FinanceEngine {
         return sum == 0 ? 0 : Money.rounded(sum / Decimal(months))
     }
 
-    // MARK: - Orçamento
-
-    struct BudgetStatus: Identifiable {
-        let category: Category
-        let limit: Decimal
-        let spent: Decimal
-
-        var id: UUID { category.id }
-        var remaining: Decimal { limit - spent }
-        var isOver: Bool { spent > limit }
-
-        /// 0...∞ — pode passar de 1 quando estourou.
-        var ratio: Double {
-            guard limit > 0 else { return spent > 0 ? 1 : 0 }
-            return spent.doubleValue / limit.doubleValue
-        }
-    }
-
-    /// Teto que vale para a categoria no mês: o ajuste do mês, se existir, senão
-    /// o valor padrão.
-    static func limit(for category: Category, month: MonthKey, lines: [BudgetLine]) -> Decimal? {
-        let mine = lines.filter { $0.category?.id == category.id }
-        if let specific = mine.first(where: { $0.monthKey == month.key }) {
-            return specific.limit
-        }
-        return mine.first(where: { $0.isDefault })?.limit
-    }
-
-    static func budgetStatuses(
-        month: MonthKey,
-        categories: [Category],
-        lines: [BudgetLine],
-        transactions all: [Txn]
-    ) -> [BudgetStatus] {
-        let summary = summary(for: month, transactions: all)
-        var spentByCategory: [UUID: Decimal] = [:]
-        for entry in summary.byCategory {
-            if let id = entry.category?.id { spentByCategory[id] = entry.total }
-        }
-
-        return categories.compactMap { category in
-            guard category.group != .receita, category.group != .neutro else { return nil }
-            guard let limit = limit(for: category, month: month, lines: lines), limit > 0 else { return nil }
-            return BudgetStatus(category: category, limit: limit, spent: spentByCategory[category.id] ?? 0)
-        }
-        .sorted { $0.ratio > $1.ratio }
-    }
+    // MARK: - Ritmo do mês
 
     /// Quanto já deveria ter sido gasto a esta altura do mês, se o gasto fosse
     /// distribuído por igual. Serve de linha de referência ("no ritmo certo").

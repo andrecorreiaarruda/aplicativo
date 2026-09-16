@@ -14,6 +14,8 @@ final class Category {
     var isSystem: Bool = false
     var keywords: [String] = []
     var sortIndex: Int = 0
+    /// O que acontece com o saldo do envelope desta categoria na virada do mês.
+    var rolloverRaw: String = RolloverPolicy.accumulate.rawValue
     var createdAt: Date = Date()
 
     @Relationship(deleteRule: .nullify, inverse: \Txn.category)
@@ -24,6 +26,14 @@ final class Category {
         set { groupRaw = newValue.rawValue }
     }
 
+    var rollover: RolloverPolicy {
+        get { RolloverPolicy(rawValue: rolloverRaw) ?? .accumulate }
+        set { rolloverRaw = newValue.rawValue }
+    }
+
+    /// Receita e movimentos neutros não têm envelope: não são gasto a planejar.
+    var acceptsEnvelope: Bool { group != .receita && group != .neutro }
+
     init(
         name: String,
         symbol: String = "tag",
@@ -31,7 +41,8 @@ final class Category {
         group: CategoryGroup = .estiloDeVida,
         keywords: [String] = [],
         isSystem: Bool = false,
-        sortIndex: Int = 0
+        sortIndex: Int = 0,
+        rollover: RolloverPolicy = .accumulate
     ) {
         self.id = UUID()
         self.name = name
@@ -41,6 +52,7 @@ final class Category {
         self.keywords = keywords
         self.isSystem = isSystem
         self.sortIndex = sortIndex
+        self.rolloverRaw = rollover.rawValue
         self.createdAt = Date()
     }
 }

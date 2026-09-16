@@ -21,12 +21,20 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(startTab, forKey: Keys.startTab) }
     }
 
+    /// Mês em que você começou a usar envelopes. Antes dele não há saldo
+    /// acumulado: todo envelope nasce zerado aqui. Sem essa âncora, o cálculo
+    /// do acúmulo não teria onde parar de voltar no tempo.
+    @Published var envelopeStartMonth: MonthKey {
+        didSet { defaults.set(envelopeStartMonth.key, forKey: Keys.envelopeStart) }
+    }
+
     private let defaults: UserDefaults
 
     private enum Keys {
         static let requireBiometrics = "requireBiometrics"
         static let hideAmounts = "hideAmounts"
         static let startTab = "startTab"
+        static let envelopeStart = "envelopeStartMonth"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -36,6 +44,16 @@ final class AppSettings: ObservableObject {
         self.requireBiometrics = defaults.object(forKey: Keys.requireBiometrics) as? Bool ?? true
         self.hideAmounts = defaults.bool(forKey: Keys.hideAmounts)
         self.startTab = defaults.integer(forKey: Keys.startTab)
+        // Na primeira abertura, os envelopes começam no mês corrente — e o
+        // valor é gravado na hora. Se ficasse só em memória, todo mês novo
+        // viraria o "início" e o acúmulo se perderia sozinho na virada.
+        if let stored = defaults.string(forKey: Keys.envelopeStart).flatMap(MonthKey.init(key:)) {
+            self.envelopeStartMonth = stored
+        } else {
+            let first = MonthKey.current
+            self.envelopeStartMonth = first
+            defaults.set(first.key, forKey: Keys.envelopeStart)
+        }
     }
 
     /// Esconde os valores na tela (útil em lugar público). Os dados continuam

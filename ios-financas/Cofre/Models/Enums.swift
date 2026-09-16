@@ -160,3 +160,59 @@ enum GoalKind: String, Codable, CaseIterable, Identifiable {
         }
     }
 }
+
+/// O que acontece com o saldo de um envelope na virada do mês.
+///
+/// É a diferença entre o método dos envelopes e um simples teto mensal: no
+/// envelope, o que sobra continua lá. É esse acúmulo que transforma economizar
+/// num placar que sobe, em vez de um limite que zera e desmotiva.
+enum RolloverPolicy: String, Codable, CaseIterable, Identifiable {
+    /// Sobra e falta atravessam o mês. É o método clássico e o padrão: se você
+    /// estourou, o dinheiro saiu de algum lugar de verdade, e o buraco
+    /// acompanha até ser coberto.
+    case accumulate
+    /// A sobra acumula, a falta é perdoada. Menos fiel à realidade do dinheiro,
+    /// mas evita que um mês ruim contamine os seguintes.
+    case surplusOnly
+    /// Começa do zero todo mês. É o teto mensal de sempre — bom para gastos que
+    /// não fazem sentido guardar, como delivery.
+    case reset
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .accumulate: return "Acumula sobra e falta"
+        case .surplusOnly: return "Acumula só a sobra"
+        case .reset: return "Zera todo mês"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .accumulate:
+            return "O que sobrar continua no envelope no mês seguinte. Se estourar, o envelope começa negativo até você cobrir."
+        case .surplusOnly:
+            return "O que sobrar continua no envelope. Se estourar, o mês seguinte começa do zero."
+        case .reset:
+            return "O envelope volta ao valor do aporte todo dia 1º, sem guardar sobra nem dívida."
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .accumulate: return "arrow.trianglehead.2.clockwise"
+        case .surplusOnly: return "arrow.up.forward.circle"
+        case .reset: return "arrow.counterclockwise"
+        }
+    }
+
+    /// Quanto do saldo disponível de um mês atravessa para o mês seguinte.
+    func carryOut(_ available: Decimal) -> Decimal {
+        switch self {
+        case .accumulate: return available
+        case .surplusOnly: return max(available, 0)
+        case .reset: return 0
+        }
+    }
+}

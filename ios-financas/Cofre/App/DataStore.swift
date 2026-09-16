@@ -16,7 +16,8 @@ enum DataStore {
         Txn.self,
         MerchantRule.self,
         ImportBatch.self,
-        BudgetLine.self,
+        EnvelopeAllocation.self,
+        EnvelopeAdjustment.self,
         Goal.self,
         GoalContribution.self,
         AllocationPlan.self,
@@ -98,13 +99,13 @@ enum SeedData {
 
             // Estilo de vida
             Category(name: "Restaurantes", symbol: "fork.knife", colorHex: "#F2994A", group: .estiloDeVida,
-                     keywords: ["ifood", "restaurante", "lanchonete", "padaria", "pizzaria", "hamburgue", "bar ", "cafe", "starbucks", "mcdonalds", "burger king", "subway", "rappi"], isSystem: true, sortIndex: next()),
+                     keywords: ["ifood", "restaurante", "lanchonete", "padaria", "pizzaria", "hamburgue", "bar ", "cafe", "starbucks", "mcdonalds", "burger king", "subway", "rappi"], isSystem: true, sortIndex: next(), rollover: .surplusOnly),
             Category(name: "Compras", symbol: "bag", colorHex: "#C0399F", group: .estiloDeVida,
                      keywords: ["amazon", "mercado livre", "mercadolivre", "shopee", "magalu", "magazine luiza", "americanas", "renner", "riachuelo", "zara", "centauro", "shopping"], isSystem: true, sortIndex: next()),
             Category(name: "Assinaturas", symbol: "repeat", colorHex: "#8E44AD", group: .estiloDeVida,
                      keywords: ["netflix", "spotify", "disney", "hbo", "max ", "prime video", "youtube premium", "apple com bill", "icloud", "globoplay", "deezer"], isSystem: true, sortIndex: next()),
             Category(name: "Lazer", symbol: "ticket", colorHex: "#E8B931", group: .estiloDeVida,
-                     keywords: ["cinema", "ingresso", "teatro", "show", "parque", "steam", "playstation", "xbox", "nintendo"], isSystem: true, sortIndex: next()),
+                     keywords: ["cinema", "ingresso", "teatro", "show", "parque", "steam", "playstation", "xbox", "nintendo"], isSystem: true, sortIndex: next(), rollover: .surplusOnly),
             Category(name: "Cuidados pessoais", symbol: "scissors", colorHex: "#C0399F", group: .estiloDeVida,
                      keywords: ["barbearia", "salao", "cabelereiro", "manicure", "estetica", "academia", "smartfit", "gympass"], isSystem: true, sortIndex: next()),
             Category(name: "Viagem", symbol: "airplane", colorHex: "#00A6A6", group: .estiloDeVida,
@@ -114,7 +115,7 @@ enum SeedData {
             Category(name: "Taxas e juros", symbol: "percent", colorHex: "#5B6472", group: .estiloDeVida,
                      keywords: ["tarifa", "juros", "anuidade", "iof", "multa", "encargos"], isSystem: true, sortIndex: next()),
             Category(name: "Outros", symbol: "ellipsis.circle", colorHex: "#8E8E93", group: .estiloDeVida,
-                     keywords: [], isSystem: true, sortIndex: next()),
+                     keywords: [], isSystem: true, sortIndex: next(), rollover: .reset),
 
             // Investir e guardar
             Category(name: "Investimentos", symbol: "chart.line.uptrend.xyaxis", colorHex: "#1D9A6C", group: .investimento,
@@ -243,9 +244,9 @@ enum SeedData {
                         targetDate: Date().adding(months: 9), colorHex: "#00A6A6")
         context.insert(trip)
 
-        for (name, limit) in [("Mercado", Decimal(900)), ("Restaurantes", 450), ("Compras", 400), ("Transporte", 500)] {
+        for (name, amount) in [("Mercado", Decimal(900)), ("Restaurantes", 450), ("Compras", 400), ("Transporte", 500)] {
             guard let cat = category(name) else { continue }
-            context.insert(BudgetLine(category: cat, limit: limit))
+            context.insert(EnvelopeAllocation(category: cat, amount: amount))
         }
 
         context.insert(RecurringBill(name: "Aluguel", expectedAmount: 1_850, dueDay: 5,
@@ -263,7 +264,8 @@ enum SeedData {
         try? context.delete(model: Txn.self)
         try? context.delete(model: GoalContribution.self)
         try? context.delete(model: Goal.self)
-        try? context.delete(model: BudgetLine.self)
+        try? context.delete(model: EnvelopeAllocation.self)
+        try? context.delete(model: EnvelopeAdjustment.self)
         try? context.delete(model: RecurringBill.self)
         try? context.delete(model: MerchantRule.self)
         try? context.delete(model: ImportBatch.self)

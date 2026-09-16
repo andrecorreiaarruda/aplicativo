@@ -1,26 +1,60 @@
 import Foundation
 import SwiftData
 
-/// Teto de gasto de uma categoria. `monthKey` guarda "aaaa-MM" para um mês
-/// específico ou `BudgetLine.defaultKey` para o valor padrão que vale sempre
-/// que não houver ajuste daquele mês.
+/// Quanto entra no envelope de uma categoria a cada mês — o aporte, não um
+/// teto. `monthKey` guarda "aaaa-MM" para ajustar um mês específico ou
+/// `EnvelopeAllocation.defaultKey` para o valor que vale em todos os meses sem
+/// ajuste próprio.
 @Model
-final class BudgetLine {
+final class EnvelopeAllocation {
     static let defaultKey = "padrao"
 
     var id: UUID = UUID()
-    var monthKey: String = BudgetLine.defaultKey
-    var limit: Decimal = 0
+    var monthKey: String = EnvelopeAllocation.defaultKey
+    /// Valor depositado no envelope no início do mês.
+    var amount: Decimal = 0
     var category: Category?
     var createdAt: Date = Date()
 
-    var isDefault: Bool { monthKey == BudgetLine.defaultKey }
+    var isDefault: Bool { monthKey == EnvelopeAllocation.defaultKey }
 
-    init(category: Category?, limit: Decimal, monthKey: String = BudgetLine.defaultKey) {
+    init(category: Category?, amount: Decimal, monthKey: String = EnvelopeAllocation.defaultKey) {
         self.id = UUID()
         self.category = category
-        self.limit = limit
+        self.amount = amount
         self.monthKey = monthKey
+        self.createdAt = Date()
+    }
+}
+
+/// Mexida manual no saldo de um envelope num mês: um reforço, uma retirada, ou
+/// uma das duas pontas de uma transferência entre envelopes.
+///
+/// É o equivalente digital de tirar uma nota do envelope do lazer e colocar no
+/// do mercado — o movimento que o método de papel sempre permitiu e que um teto
+/// mensal não sabe representar.
+@Model
+final class EnvelopeAdjustment {
+    var id: UUID = UUID()
+    /// Sempre um mês concreto ("aaaa-MM"), nunca o valor padrão.
+    var monthKey: String = MonthKey.current.key
+    /// Positivo entra no envelope, negativo sai.
+    var amount: Decimal = 0
+    var note: String = ""
+    var category: Category?
+    /// Liga as duas pontas de uma transferência, para poder desfazer as duas.
+    var transferPairID: UUID?
+    var createdAt: Date = Date()
+
+    var isTransfer: Bool { transferPairID != nil }
+
+    init(category: Category?, amount: Decimal, monthKey: String, note: String = "", transferPairID: UUID? = nil) {
+        self.id = UUID()
+        self.category = category
+        self.amount = amount
+        self.monthKey = monthKey
+        self.note = note
+        self.transferPairID = transferPairID
         self.createdAt = Date()
     }
 }

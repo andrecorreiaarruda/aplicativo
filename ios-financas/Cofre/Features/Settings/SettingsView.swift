@@ -139,6 +139,9 @@ struct SettingsView: View {
             ) {
                 Button("Carregar exemplo") {
                     SeedData.installSampleLedger(in: context)
+                    // Recua o início dos envelopes para os meses de exemplo
+                    // aparecerem já com saldo acumulado.
+                    settings.envelopeStartMonth = MonthKey.current.adding(months: -4)
                 }
                 Button("Cancelar", role: .cancel) {}
             }

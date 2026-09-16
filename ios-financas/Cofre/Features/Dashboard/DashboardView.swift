@@ -22,7 +22,9 @@ struct DashboardView: View {
     @Query(sort: \Category.sortIndex)
     private var categories: [Category]
 
-    @Query private var budgetLines: [BudgetLine]
+    @Query private var allocations: [EnvelopeAllocation]
+
+    @Query private var envelopeAdjustments: [EnvelopeAdjustment]
 
     @Query(filter: #Predicate<RecurringBill> { !$0.isArchived }, sort: \RecurringBill.dueDay)
     private var bills: [RecurringBill]
@@ -281,36 +283,58 @@ struct DashboardView: View {
     // MARK: - Orçamento
 
     private var budgetCard: some View {
-        let statuses = FinanceEngine.budgetStatuses(
-            month: month, categories: categories, lines: budgetLines, transactions: transactions
+        let states = EnvelopeEngine.states(
+            month: month,
+            start: settings.envelopeStartMonth,
+            categories: categories,
+            allocations: allocations,
+            adjustments: envelopeAdjustments,
+            transactions: transactions
         )
-        let pace = FinanceEngine.paceFraction(of: month)
+        let totals = EnvelopeEngine.totals(states)
+        let pace = month == MonthKey.current ? FinanceEngine.paceFraction(of: month) : nil
 
         return CardSurface {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    sectionTitle("Metas de gasto", systemImage: "target")
+                    sectionTitle("Envelopes", systemImage: "envelope")
                     Spacer()
-                    NavigationLink("Ver tudo") { BudgetView(month: month) }
+                    NavigationLink("Ver tudo") { EnvelopesView(month: month) }
                         .font(.caption)
                 }
 
-                if statuses.isEmpty {
+                if states.isEmpty {
                     InlineNote(
                         symbol: "info.circle",
-                        text: "Defina um teto por categoria em Planejar para acompanhar aqui."
+                        text: "Em Planejar, separe um valor por categoria. O que sobrar continua no envelope no mês seguinte."
                     )
                 } else {
-                    ForEach(statuses.prefix(4)) { status in
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(settings.display(totals.available))
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(totals.available < 0 ? Palette.negative : .primary)
+                        Text("ainda disponível")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        if totals.carriedIn != 0 {
+                            Text("\(Money.signed(totals.carriedIn)) do mês passado")
+                                .font(.caption2)
+                                .foregroundStyle(totals.carriedIn > 0 ? Palette.positive : Palette.negative)
+                        }
+                    }
+
+                    // Os que precisam de atenção primeiro: estourados no topo.
+                    ForEach(states.prefix(4)) { state in
                         VStack(alignment: .leading, spacing: 5) {
                             HStack {
-                                Text(status.category.name).font(.subheadline)
+                                Text(state.category.name).font(.subheadline)
                                 Spacer()
-                                Text("\(settings.displayAbs(status.spent)) de \(settings.displayAbs(status.limit))")
+                                Text(settings.display(state.available))
                                     .font(.caption)
-                                    .foregroundStyle(status.isOver ? Palette.negative : .secondary)
+                                    .foregroundStyle(state.isOverdrawn ? Palette.negative : .secondary)
                             }
-                            MeterBar(ratio: status.ratio, tint: Palette.budget(status.ratio), pace: pace, height: 8)
+                            MeterBar(ratio: state.ratio, tint: Palette.budget(state.ratio), pace: pace, height: 8)
                         }
                         .padding(.vertical, 2)
                     }

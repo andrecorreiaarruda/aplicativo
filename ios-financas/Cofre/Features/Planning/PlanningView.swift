@@ -8,18 +8,22 @@ struct PlanningView: View {
 
     @Query(sort: \Txn.date, order: .reverse) private var transactions: [Txn]
     @Query(sort: \Category.sortIndex) private var categories: [Category]
-    @Query private var budgetLines: [BudgetLine]
+    @Query private var allocations: [EnvelopeAllocation]
+    @Query private var envelopeAdjustments: [EnvelopeAdjustment]
     @Query(filter: #Predicate<Goal> { !$0.isArchived }) private var goals: [Goal]
     @Query private var plans: [AllocationPlan]
 
     private let month = MonthKey.current
 
-    private var budgetStatuses: [FinanceEngine.BudgetStatus] {
-        FinanceEngine.budgetStatuses(month: month, categories: categories, lines: budgetLines, transactions: transactions)
-    }
-
-    private var overBudgetCount: Int {
-        budgetStatuses.filter(\.isOver).count
+    private var envelopeStates: [EnvelopeEngine.State] {
+        EnvelopeEngine.states(
+            month: month,
+            start: settings.envelopeStartMonth,
+            categories: categories,
+            allocations: allocations,
+            adjustments: envelopeAdjustments,
+            transactions: transactions
+        )
     }
 
     var body: some View {
@@ -27,15 +31,13 @@ struct PlanningView: View {
             List {
                 Section {
                     NavigationLink {
-                        BudgetView(month: month)
+                        EnvelopesView(month: month)
                     } label: {
                         row(
-                            symbol: "target",
+                            symbol: "envelope",
                             hex: "#F2994A",
-                            title: "Metas de gasto",
-                            subtitle: budgetStatuses.isEmpty
-                                ? "Defina um teto por categoria"
-                                : "\(budgetStatuses.count) categoria(s) com teto" + (overBudgetCount > 0 ? " • \(overBudgetCount) estourada(s)" : "")
+                            title: "Envelopes",
+                            subtitle: envelopeSubtitle
                         )
                     }
 
@@ -98,6 +100,16 @@ struct PlanningView: View {
             }
             .navigationTitle("Planejar")
         }
+    }
+
+    private var envelopeSubtitle: String {
+        let states = envelopeStates
+        guard !states.isEmpty else { return "Separe um valor por categoria" }
+        let totals = EnvelopeEngine.totals(states)
+        if totals.overdrawnCount > 0 {
+            return "\(settings.display(totals.available)) disponíveis • \(totals.overdrawnCount) no vermelho"
+        }
+        return "\(settings.display(totals.available)) disponíveis em \(states.count) envelope(s)"
     }
 
     private var allocationSubtitle: String {
