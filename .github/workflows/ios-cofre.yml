@@ -1,0 +1,104 @@
+# Compila o app iOS (ios-financas/Cofre) num runner macOS.
+#
+# Existe porque o desenvolvimento acontece fora de um Mac: sem isto, o código
+# Swift só descobriria que não compila quando alguém abrisse o Xcode. O
+# repositório é público, então os minutos de macOS são gratuitos e ilimitados.
+#
+# Não assina nem publica nada — só responde "isto compila?".
+name: iOS · Cofre
+
+on:
+  push:
+    paths:
+      - 'ios-financas/**'
+      - '.github/workflows/ios-cofre.yml'
+  pull_request:
+    paths:
+      - 'ios-financas/**'
+      - '.github/workflows/ios-cofre.yml'
+  workflow_dispatch:
+
+# Um push novo cancela o build anterior do mesmo ramo: o resultado antigo já
+# não interessa e os minutos são melhor gastos no código atual.
+concurrency:
+  group: ios-cofre-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Compilar
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    env:
+      PROJECT: ios-financas/Cofre.xcodeproj
+      SCHEME: Cofre
+
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v4
+
+      - name: Mostrar o ambiente
+        run: |
+          echo "Xcode: $(xcodebuild -version | tr '\n' ' ')"
+          echo "Swift: $(swift --version 2>&1 | head -1)"
+          echo "SDKs de iOS disponíveis:"
+          xcodebuild -showsdks 2>/dev/null | grep -i iphone || true
+
+      # O project.pbxproj foi escrito à mão. Se estiver malformado, o erro
+      # aparece aqui, claro, em vez de virar uma falha confusa na compilação.
+      - name: Validar o projeto
+        run: xcodebuild -list -project "$PROJECT"
+
+      - name: Compilar para o simulador
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            2>&1 | tee build.log
+
+      # Sem um formatador instalado, o log cru tem milhares de linhas. Este
+      # passo puxa só o que interessa para o resumo da execução, que é o que
+      # se lê primeiro ao abrir uma falha.
+      - name: Resumir os erros
+        if: failure()
+        run: |
+          {
+            echo "## Erros de compilação"
+            echo
+            echo '```'
+            grep -E "error:" build.log | sed -E 's|^.*/ios-financas/|ios-financas/|' | sort -u | head -80
+            echo '```'
+            echo
+            echo "Total de linhas com \`error:\`: $(grep -c 'error:' build.log || echo 0)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "----- erros -----"
+          grep -E "error:" build.log | sed -E 's|^.*/ios-financas/|ios-financas/|' | sort -u | head -80
+
+      - name: Guardar o log completo
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          retention-days: 7
+
+      - name: Avisos
+        if: success()
+        run: |
+          {
+            echo "## Compilou"
+            echo
+            echo "Avisos encontrados: $(grep -c 'warning:' build.log || echo 0)"
+            echo
+            echo '```'
+            grep -E "warning:" build.log | sed -E 's|^.*/ios-financas/|ios-financas/|' | sort -u | head -40
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
