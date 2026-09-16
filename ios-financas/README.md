@@ -1,5 +1,7 @@
 # Cofre — finanças pessoais para iOS
 
+[![iOS · Cofre](https://github.com/andrecorreiaarruda/aplicativo/actions/workflows/ios-cofre.yml/badge.svg?branch=claude/ios-personal-finance-app-6resap)](https://github.com/andrecorreiaarruda/aplicativo/actions/workflows/ios-cofre.yml)
+
 App de finanças pessoais para uso próprio, escrito em SwiftUI + SwiftData.
 Organiza contas e cartões, **lê** as operações a partir dos extratos que você
 mesmo exporta do banco, e acompanha metas de gasto, de economia e de
@@ -129,7 +131,15 @@ origem. Você continua dono dos seus dados mesmo se parar de usar o app.
 
 ## Como rodar
 
-Requer **Xcode 16+** e **iOS 17+** (o app usa SwiftData e Swift Charts).
+Requer **Xcode 16+** e **iOS 17+** (o app usa SwiftData e Swift Charts). A CI
+compila contra o Xcode que o runner do GitHub oferece — hoje o 26.6, com o SDK
+do iOS 26.5.
+
+> O projeto é desenvolvido fora de um Mac. Para que isso não vire código que
+> nunca viu um compilador, cada push em `ios-financas/` dispara um build num
+> runner macOS (`.github/workflows/ios-cofre.yml`). O selo acima é o estado
+> atual. A CI responde «isto compila?» — ela não assina, não publica e não
+> substitui rodar o app de verdade num Mac.
 
 ```bash
 open ios-financas/Cofre.xcodeproj
