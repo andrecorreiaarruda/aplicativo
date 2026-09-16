@@ -40,6 +40,18 @@
 	</array>
 
 	<!--
+	  Falso de propósito, e declarado em vez de omitido porque o Xcode avisa
+	  quando um app que abre arquivos não diz o que faz com eles.
+
+	  Abrir "no lugar" daria ao app acesso de escrita ao arquivo original, na
+	  pasta do banco ou no iCloud. Não há motivo: a importação só lê. Com falso,
+	  o iOS entrega uma cópia na Inbox, que o app lê e apaga em seguida — o
+	  arquivo do usuário fica intocado.
+	-->
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<false/>
+
+	<!--
 	  O sistema não tem um tipo próprio para OFX, então declaramos um e o
 	  amarramos às extensões .ofx e .qfx.
 	-->
