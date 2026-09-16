@@ -67,4 +67,24 @@ final class SyncProviderRegistry {
     func provider(id: String) -> FinanceSyncProvider? {
         providers.first { $0.id == id }
     }
+
+    /// Versão da lista pronta para a interface, sem expor o protocolo.
+    var descriptions: [ProviderDescription] {
+        providers.map {
+            ProviderDescription(
+                id: $0.id,
+                displayName: $0.displayName,
+                summary: $0.summary,
+                isAvailable: $0.isAvailable
+            )
+        }
+    }
+}
+
+/// O que a tela de ajustes precisa saber sobre um provedor.
+struct ProviderDescription: Identifiable, Hashable {
+    let id: String
+    let displayName: String
+    let summary: String
+    let isAvailable: Bool
 }

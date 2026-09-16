@@ -93,12 +93,19 @@ jobs:
       - name: Avisos
         if: success()
         run: |
+          AVISOS=$(grep -E "warning:" build.log | sed -E 's|^.*/ios-financas/|ios-financas/|' | sort -u)
+          TOTAL=$(printf '%s' "$AVISOS" | grep -c . || true)
+
           {
             echo "## Compilou"
             echo
-            echo "Avisos encontrados: $(grep -c 'warning:' build.log || echo 0)"
+            echo "Avisos distintos: $TOTAL"
             echo
             echo '```'
-            grep -E "warning:" build.log | sed -E 's|^.*/ios-financas/|ios-financas/|' | sort -u | head -40
+            printf '%s\n' "$AVISOS" | head -40
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+          # Também no log: é onde se lê o resultado sem abrir o navegador.
+          echo "----- avisos ($TOTAL) -----"
+          printf '%s\n' "$AVISOS" | head -40

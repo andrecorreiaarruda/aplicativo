@@ -260,7 +260,7 @@ struct SyncProvidersView: View {
     var body: some View {
         NavigationStack {
             List {
-                ForEach(registry.providers, id: \.id) { provider in
+                ForEach(registry.descriptions) { provider in
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
                             Text(provider.displayName).font(.subheadline.weight(.medium))
