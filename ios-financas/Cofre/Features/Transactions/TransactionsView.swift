@@ -34,11 +34,17 @@ struct TransactionsView: View {
         }
     }
 
+    private struct DaySection: Identifiable {
+        let day: Date
+        let items: [Txn]
+        var id: Date { day }
+    }
+
     /// Agrupa por dia para o extrato ficar legível.
-    private var sections: [(day: Date, items: [Txn])] {
+    private var sections: [DaySection] {
         let groups = Dictionary(grouping: filtered) { $0.date.startOfDay }
         return groups
-            .map { (day: $0.key, items: $0.value.sorted { $0.createdAt > $1.createdAt }) }
+            .map { DaySection(day: $0.key, items: $0.value.sorted { $0.createdAt > $1.createdAt }) }
             .sorted { $0.day > $1.day }
     }
 
@@ -67,7 +73,7 @@ struct TransactionsView: View {
                     }
                 }
 
-                ForEach(sections, id: \.day) { section in
+                ForEach(sections) { section in
                     Section(DateFormatters.weekdayDay.string(from: section.day).capitalizedFirst) {
                         ForEach(section.items) { txn in
                             NavigationLink {

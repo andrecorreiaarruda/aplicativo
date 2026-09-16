@@ -47,15 +47,21 @@ struct EnvelopesView: View {
         return income - totals.allocated
     }
 
+    private struct LeakingCategory: Identifiable {
+        let category: Category
+        let spent: Decimal
+        var id: UUID { category.id }
+    }
+
     /// Categorias com gasto no mês mas sem envelope — o vazamento do orçamento.
-    private var leaking: [(category: Category, spent: Decimal)] {
+    private var leaking: [LeakingCategory] {
         let spending = EnvelopeEngine.spendingByMonth(transactions)[month.key] ?? [:]
         return categories.compactMap { category in
             guard category.acceptsEnvelope,
                   !EnvelopeEngine.hasEnvelope(category, allocations: allocations, adjustments: adjustments),
                   let spent = spending[category.id], spent > 0
             else { return nil }
-            return (category, spent)
+            return LeakingCategory(category: category, spent: spent)
         }
         .sorted { $0.spent > $1.spent }
     }
@@ -274,7 +280,7 @@ struct EnvelopesView: View {
 
     private var leakingSection: some View {
         Section {
-            ForEach(leaking, id: \.category.id) { entry in
+            ForEach(leaking) { entry in
                 Button { editingCategory = entry.category } label: {
                     HStack(spacing: 12) {
                         IconBadge(symbol: entry.category.symbol, hex: entry.category.colorHex, size: 30)

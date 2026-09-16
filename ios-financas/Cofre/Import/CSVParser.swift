@@ -147,7 +147,7 @@ enum CSVReader {
 }
 
 /// Como as colunas do CSV viram lançamentos.
-struct CSVMapping: Equatable {
+struct CSVMapping: Hashable {
     var dateColumn: Int = 0
     var descriptionColumn: Int = 1
     /// Coluna única com o valor já sinalizado.
@@ -396,5 +396,3 @@ enum CSVImporter {
         )
     }
 }
-
-private func abs(_ value: Decimal) -> Decimal { value < 0 ? -value : value }

@@ -17,10 +17,18 @@ struct AccountsView: View {
         allAccounts.filter { showingArchived || !$0.isArchived }
     }
 
-    private var grouped: [(name: String, accounts: [Account])] {
+    /// Tipo nomeado em vez de tupla: o ForEach precisa de um key path para o
+    /// identificador, e Swift não forma key path para elemento de tupla.
+    private struct InstitutionGroup: Identifiable {
+        let name: String
+        let accounts: [Account]
+        var id: String { name }
+    }
+
+    private var grouped: [InstitutionGroup] {
         let groups = Dictionary(grouping: accounts) { $0.institution?.name ?? "Sem instituição" }
         return groups
-            .map { (name: $0.key, accounts: $0.value.sorted { $0.name < $1.name }) }
+            .map { InstitutionGroup(name: $0.key, accounts: $0.value.sorted { $0.name < $1.name }) }
             .sorted { $0.name < $1.name }
     }
 
@@ -52,7 +60,7 @@ struct AccountsView: View {
                     }
                 }
 
-                ForEach(grouped, id: \.name) { group in
+                ForEach(grouped) { group in
                     Section(group.name) {
                         ForEach(group.accounts) { account in
                             NavigationLink {
