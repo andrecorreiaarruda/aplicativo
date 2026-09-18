@@ -133,6 +133,73 @@ class OfflineFirstServiceLogRepository
     }
   }
 
+  /// Impedimentos à exclusão definitiva, sobre a visão completa.
+  ///
+  /// O espelho local guarda apenas os registros ativos: o download filtra
+  /// `deleted_at is null`. Quem foi arquivado noutro dispositivo só
+  /// aparece na lista vinda do servidor, e é justamente esse o dependente
+  /// perigoso — sairia em cascata junto do pai, sem ninguém ver. Por isso
+  /// a contagem junta as duas fontes antes de decidir.
+  ///
+  /// Sem rede, `fetchArchived` cai no espelho local e a conta fica
+  /// incompleta. Não é problema: o servidor repete a verificação e recusa,
+  /// e a recusa aparece na tela de conflitos.
+  Future<void> _assertPurgeable(String entityType, String id) async {
+    if (entityType == 'service_case') return; // Folha: nada depende dele.
+
+    final arquivados = await fetchArchived();
+    final ativos = await _local.fetchEquipments();
+    final casosAtivos = await _local.fetchCases();
+
+    final equipamentos = <Equipment>[...ativos, ...arquivados.equipment];
+    // Ativo e arquivado chegam em tipos diferentes; o que interessa aos
+    // dois é o equipamento a que o atendimento pertence.
+    final donosDeAtendimento = <String>[
+      ...casosAtivos.map((item) => item.equipmentId),
+      ...arquivados.cases.map((item) => item.equipmentId),
+    ];
+
+    var equipamentosDependentes = 0;
+    var atendimentosDependentes = 0;
+
+    if (entityType == 'customer') {
+      final locais = await _local.siteIdsOfCustomer(id);
+      final doCliente = equipamentos
+          .where((item) => locais.contains(item.siteId))
+          .toList(growable: false);
+      final idsDoCliente = doCliente.map((item) => item.id).toSet();
+      equipamentosDependentes = doCliente.length;
+      atendimentosDependentes = donosDeAtendimento
+          .where(idsDoCliente.contains)
+          .length;
+    } else {
+      atendimentosDependentes = donosDeAtendimento
+          .where((dono) => dono == id)
+          .length;
+    }
+
+    DemoServiceLogRepository.assertNoPurgeBlockers(
+      entityType == 'customer' ? 'cliente' : 'equipamento',
+      equipamentos: equipamentosDependentes,
+      atendimentos: atendimentosDependentes,
+    );
+  }
+
+  @override
+  Future<void> purgeCustomer(String id) async {
+    await _assertPurgeable('customer', id);
+    await _local.purgeCustomer(id);
+  }
+
+  @override
+  Future<void> purgeEquipment(String id) async {
+    await _assertPurgeable('equipment', id);
+    await _local.purgeEquipment(id);
+  }
+
+  @override
+  Future<void> purgeCase(String id) => _local.purgeCase(id);
+
   @override
   Future<void> signOut() => _remote.signOut();
 
@@ -205,11 +272,18 @@ class OfflineFirstServiceLogRepository
               result.message ?? 'O servidor recusou a operação offline.',
             );
           }
-          final revision = result.revision;
-          if (revision == null || revision < 1) {
-            throw StateError('Servidor não informou a revisão da operação.');
+          if (operation.operation == 'purge') {
+            // Exclusão definitiva não devolve revisão utilizável: a linha
+            // já não existe, e quando ela nem existia o servidor responde
+            // sem revisão nenhuma.
+            await _local.acknowledgePurge(operation);
+          } else {
+            final revision = result.revision;
+            if (revision == null || revision < 1) {
+              throw StateError('Servidor não informou a revisão da operação.');
+            }
+            await _local.acknowledge(operation, revision);
           }
-          await _local.acknowledge(operation, revision);
           if (operation.entityType == 'service_case' &&
               operation.payload['status'] == 'resolved') {
             try {

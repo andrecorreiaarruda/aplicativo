@@ -10,9 +10,19 @@ List<SyncOperation> mutateOutbox(
 ) {
   final result = [...current];
   if (completed != null) {
-    if (completed.namespace != namespace || revision == null || revision < 1) {
+    // A exclusão definitiva é a única confirmação sem revisão: a linha
+    // deixou de existir, e o servidor pode nem tê-la encontrado. Os
+    // sucessores, se houver, são rebaseados em zero — com a linha
+    // apagada, uma gravação futura com o mesmo id é registro novo, e é
+    // assim que a base zero se comporta.
+    final purga = completed.operation == 'purge';
+    final revisaoValida = purga
+        ? (revision == null || revision >= 0)
+        : (revision != null && revision >= 1);
+    if (completed.namespace != namespace || !revisaoValida) {
       throw StateError('Confirmação remota inválida.');
     }
+    if (purga) revision = 0;
     final index = result.indexWhere((item) => item.id == completed.id);
     if (index < 0) throw StateError('Operação confirmada não encontrada.');
     result.removeAt(index);

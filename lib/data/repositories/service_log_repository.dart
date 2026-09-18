@@ -34,6 +34,17 @@ abstract class ServiceLogRepository {
 
   Future<ArchivedRecords> fetchArchived();
 
+  /// Exclusão definitiva, a partir de Arquivados. Ao contrário do
+  /// arquivamento, não tem volta: a linha sai do banco.
+  ///
+  /// Só se aplica a registro já arquivado e sem nenhum dependente —
+  /// inclusive dependentes arquivados, que o arquivamento ignora mas cuja
+  /// remoção em cascata deixaria histórico órfão. Lança [StateError] com
+  /// a contagem quando é recusada.
+  Future<void> purgeCustomer(String id);
+  Future<void> purgeEquipment(String id);
+  Future<void> purgeCase(String id);
+
   Future<void> signOut();
 }
 

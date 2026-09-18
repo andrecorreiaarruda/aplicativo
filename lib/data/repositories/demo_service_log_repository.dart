@@ -788,19 +788,38 @@ class DemoServiceLogRepository
   // dependente: num registro de serviço técnico, o histórico é o ativo
   // principal e não pode ser escondido por um clique em outro cadastro.
 
-  /// Ids dos equipamentos de um cliente, através dos locais dele.
-  List<Equipment> _equipmentOfCustomer(String customerId) {
+  /// Equipamentos de um cliente, através dos locais dele.
+  ///
+  /// [incluirArquivados] distingue os dois usos: arquivar só se importa
+  /// com o que ainda está ativo, enquanto excluir em definitivo precisa
+  /// contar também o arquivado — ele sairia em cascata e deixaria
+  /// histórico órfão.
+  List<Equipment> _equipmentOfCustomer(
+    String customerId, {
+    bool incluirArquivados = false,
+  }) {
     final siteIds = _sites
         .where((item) => item.customerId == customerId)
         .map((item) => item.id)
         .toSet();
     return _equipment
-        .where((item) => !item.isArchived && siteIds.contains(item.siteId))
+        .where(
+          (item) =>
+              (incluirArquivados || !item.isArchived) &&
+              siteIds.contains(item.siteId),
+        )
         .toList(growable: false);
   }
 
-  List<ServiceCase> _casesOfEquipment(String equipmentId) => _cases
-      .where((item) => !item.isArchived && item.equipmentId == equipmentId)
+  List<ServiceCase> _casesOfEquipment(
+    String equipmentId, {
+    bool incluirArquivados = false,
+  }) => _cases
+      .where(
+        (item) =>
+            (incluirArquivados || !item.isArchived) &&
+            item.equipmentId == equipmentId,
+      )
       .toList(growable: false);
 
   static String _plural(int count, String singular, String plural) =>
@@ -909,6 +928,134 @@ class DemoServiceLogRepository
     );
   }
 
+  // ---------------------------------------------------------------------
+  // Exclusão definitiva
+  // ---------------------------------------------------------------------
+  // A linha sai do banco. Duas exigências antes disso: o registro precisa
+  // estar arquivado, e não pode ter nenhum dependente — nem arquivado.
+  //
+  // A contagem aqui enxerga apenas o espelho local, que guarda o que veio
+  // do download (ativos) mais o que foi arquivado neste dispositivo e
+  // ainda não sincronizou. Registros arquivados noutro dispositivo ficam
+  // fora dessa conta; quem fecha essa lacuna é o repositório offline,
+  // que soma a lista de arquivados do servidor antes de delegar, e o
+  // próprio servidor, que recusa em último caso.
+
+  @override
+  Future<void> purgeCustomer(String id) => _mutate(() => _purgeCustomer(id));
+
+  Future<void> _purgeCustomer(String id) async {
+    await _ensureHydrated();
+    await _latency();
+    final index = _customers.indexWhere((item) => item.id == id);
+    if (index >= 0) {
+      if (!_customers[index].isArchived) {
+        throw StateError(
+          'Só registros arquivados podem ser excluídos em definitivo. '
+          'Arquive o cliente primeiro.',
+        );
+      }
+      final equipamentos = _equipmentOfCustomer(id, incluirArquivados: true);
+      final atendimentos = equipamentos
+          .expand((item) => _casesOfEquipment(item.id, incluirArquivados: true))
+          .length;
+      assertNoPurgeBlockers(
+        'cliente',
+        equipamentos: equipamentos.length,
+        atendimentos: atendimentos,
+      );
+      _customers.removeAt(index);
+      _sites.removeWhere((item) => item.customerId == id);
+    }
+    // Ausente do espelho não é erro: um registro arquivado noutro
+    // dispositivo só existe na lista vinda do servidor, e é de lá que a
+    // tela de Arquivados o oferece para exclusão.
+    await _journal(
+      entityType: 'customer',
+      entityId: id,
+      operation: 'purge',
+      payload: {'id': id},
+    );
+  }
+
+  @override
+  Future<void> purgeEquipment(String id) => _mutate(() => _purgeEquipment(id));
+
+  Future<void> _purgeEquipment(String id) async {
+    await _ensureHydrated();
+    await _latency();
+    final index = _equipment.indexWhere((item) => item.id == id);
+    if (index >= 0) {
+      if (!_equipment[index].isArchived) {
+        throw StateError(
+          'Só registros arquivados podem ser excluídos em definitivo. '
+          'Arquive o equipamento primeiro.',
+        );
+      }
+      assertNoPurgeBlockers(
+        'equipamento',
+        equipamentos: 0,
+        atendimentos: _casesOfEquipment(id, incluirArquivados: true).length,
+      );
+      _equipment.removeAt(index);
+    }
+    await _journal(
+      entityType: 'equipment',
+      entityId: id,
+      operation: 'purge',
+      payload: {'id': id},
+    );
+  }
+
+  @override
+  Future<void> purgeCase(String id) => _mutate(() => _purgeCase(id));
+
+  Future<void> _purgeCase(String id) async {
+    await _ensureHydrated();
+    await _latency();
+    final index = _cases.indexWhere((item) => item.id == id);
+    if (index >= 0) {
+      if (!_cases[index].isArchived) {
+        throw StateError(
+          'Só registros arquivados podem ser excluídos em definitivo. '
+          'Arquive o atendimento primeiro.',
+        );
+      }
+      // Atendimento é folha: nada depende dele.
+      _cases.removeAt(index);
+    }
+    await _journal(
+      entityType: 'service_case',
+      entityId: id,
+      operation: 'purge',
+      payload: {'id': id},
+    );
+  }
+
+  /// Recusa a exclusão quando há dependentes, com a contagem por extenso.
+  /// Exposta porque o repositório offline refaz a conta sobre a visão
+  /// completa — local mais arquivados do servidor — e precisa recusar com
+  /// a mesma frase.
+  static void assertNoPurgeBlockers(
+    String tipo, {
+    required int equipamentos,
+    required int atendimentos,
+  }) {
+    if (equipamentos == 0 && atendimentos == 0) return;
+    final partes = <String>[
+      if (equipamentos > 0)
+        _plural(equipamentos, 'equipamento', 'equipamentos'),
+      if (atendimentos > 0)
+        _plural(atendimentos, 'atendimento', 'atendimentos'),
+    ];
+    final unico = partes.length == 1 && equipamentos + atendimentos == 1;
+    throw StateError(
+      'Não é possível excluir: ${partes.join(' e ')} ainda '
+      '${unico ? 'depende' : 'dependem'} deste $tipo, inclusive arquivados. '
+      'Exclua-os primeiro.',
+    );
+  }
+
   @override
   Future<void> restoreCustomer(String id) =>
       _mutate(() => _restoreCustomer(id));
@@ -988,6 +1135,7 @@ class DemoServiceLogRepository
             (item) => ServiceCaseSummary(
               id: item.id,
               caseNumber: item.caseNumber,
+              equipmentId: item.equipmentId,
               equipmentLabel: item.equipmentLabel,
               reportedFailure: item.reportedFailure,
               openedAt: item.openedAt,
@@ -1323,6 +1471,22 @@ class DemoServiceLogRepository
     'notes': _blankToNull(draft.notes),
   };
 
+  /// Ids dos locais de um cliente, inclusive quando o cliente está
+  /// arquivado.
+  ///
+  /// `fetchEquipmentCatalog` esconde os locais de clientes arquivados, o
+  /// que é certo para as listagens e errado para a exclusão definitiva:
+  /// ali o cliente é sempre arquivado, e é por esses locais que se chega
+  /// aos equipamentos que impediriam a exclusão.
+  Future<Set<String>> siteIdsOfCustomer(String customerId) =>
+      _mutex.run(() async {
+        await _ensureHydrated();
+        return _sites
+            .where((item) => item.customerId == customerId)
+            .map((item) => item.id)
+            .toSet();
+      });
+
   /// Descrição legível de um registro do espelho local, para a tela de
   /// conflitos. O payload da operação não serve: arquivar e restaurar
   /// enfileiram apenas o id, e um conflito precisa dizer sobre o que é.
@@ -1369,6 +1533,19 @@ class DemoServiceLogRepository
     },
     completed: operation,
     revision: revision,
+  );
+
+  /// Confirmação de uma exclusão definitiva.
+  ///
+  /// Não há revisão a guardar: a linha deixou de existir, e manter a
+  /// entrada de revisão faria uma futura gravação com o mesmo id partir de
+  /// uma base que o servidor não reconhece mais.
+  Future<void> acknowledgePurge(SyncOperation operation) => _mutate(
+    () async {
+      _remoteRevisions.remove('${operation.entityType}:${operation.entityId}');
+    },
+    completed: operation,
+    revision: 0,
   );
 
   Future<void> replaceFromRemote({

@@ -329,6 +329,7 @@ class ServiceCaseSummary {
   const ServiceCaseSummary({
     required this.id,
     required this.caseNumber,
+    required this.equipmentId,
     required this.equipmentLabel,
     required this.reportedFailure,
     required this.openedAt,
@@ -337,6 +338,10 @@ class ServiceCaseSummary {
 
   final String id;
   final int caseNumber;
+
+  /// Necessário para contar dependentes na exclusão definitiva: sem ele,
+  /// um atendimento arquivado não pode ser ligado ao seu equipamento.
+  final String equipmentId;
   final String equipmentLabel;
   final String reportedFailure;
   final DateTime openedAt;

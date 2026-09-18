@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/orion_theme.dart';
 import '../../data/models/equipment.dart';
 import '../../shared/widgets/empty_state.dart';
+import '../../shared/widgets/purge_confirmation.dart';
 import '../../shared/widgets/section_header.dart';
 import '../shell/service_log_controller.dart';
 
@@ -52,6 +53,24 @@ class _ArchivedPageState extends State<ArchivedPage> {
         context,
       ).showSnackBar(SnackBar(content: Text(motivo)));
     }
+  }
+
+  Future<void> _excluir({
+    required String tipo,
+    required String nome,
+    required Future<bool> Function() acao,
+  }) async {
+    final confirmado = await confirmPurge(context, tipo: tipo, nome: nome);
+    if (!confirmado || !mounted) return;
+    final ok = await acao();
+    if (!mounted) return;
+    _recarregar();
+    final mensagem = ok
+        ? 'Registro excluído em definitivo.'
+        : widget.controller.errorMessage ?? 'Não foi possível excluir.';
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(mensagem)));
   }
 
   @override
@@ -117,6 +136,11 @@ class _ArchivedPageState extends State<ArchivedPage> {
                         onRestaurar: () => _restaurar(
                           () => widget.controller.restoreCustomer(item.id),
                         ),
+                        onExcluir: () => _excluir(
+                          tipo: 'cliente',
+                          nome: item.name,
+                          acao: () => widget.controller.purgeCustomer(item.id),
+                        ),
                       ),
                   ],
                 ),
@@ -132,6 +156,11 @@ class _ArchivedPageState extends State<ArchivedPage> {
                         arquivadoEm: item.archivedAt,
                         onRestaurar: () => _restaurar(
                           () => widget.controller.restoreEquipment(item.id),
+                        ),
+                        onExcluir: () => _excluir(
+                          tipo: 'equipamento',
+                          nome: '${item.displayName} · ${item.serialLabel}',
+                          acao: () => widget.controller.purgeEquipment(item.id),
                         ),
                       ),
                   ],
@@ -149,6 +178,11 @@ class _ArchivedPageState extends State<ArchivedPage> {
                         arquivadoEm: item.archivedAt,
                         onRestaurar: () => _restaurar(
                           () => widget.controller.restoreCase(item.id),
+                        ),
+                        onExcluir: () => _excluir(
+                          tipo: 'atendimento',
+                          nome: 'OS ${item.caseNumber}',
+                          acao: () => widget.controller.purgeCase(item.id),
                         ),
                       ),
                   ],
@@ -208,12 +242,14 @@ class _LinhaArquivada extends StatelessWidget {
     required this.detalhe,
     required this.arquivadoEm,
     required this.onRestaurar,
+    required this.onExcluir,
   });
 
   final String titulo;
   final String detalhe;
   final DateTime? arquivadoEm;
   final VoidCallback onRestaurar;
+  final VoidCallback onExcluir;
 
   @override
   Widget build(BuildContext context) {
@@ -230,10 +266,24 @@ class _LinhaArquivada extends StatelessWidget {
         ].join(' · '),
         style: const TextStyle(color: OrionColors.muted),
       ),
-      trailing: FilledButton.tonalIcon(
-        onPressed: onRestaurar,
-        icon: const Icon(Icons.restore_rounded, size: 18),
-        label: const Text('Restaurar'),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FilledButton.tonalIcon(
+            onPressed: onRestaurar,
+            icon: const Icon(Icons.restore_rounded, size: 18),
+            label: const Text('Restaurar'),
+          ),
+          const SizedBox(width: 4),
+          IconButton(
+            tooltip: 'Excluir para sempre',
+            onPressed: onExcluir,
+            icon: const Icon(
+              Icons.delete_forever_rounded,
+              color: OrionColors.danger,
+            ),
+          ),
+        ],
       ),
     );
   }

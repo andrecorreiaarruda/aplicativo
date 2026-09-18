@@ -190,6 +190,23 @@ class ServiceLogController extends ChangeNotifier {
     await _reloadAfterArchive();
   });
 
+  /// Exclusão definitiva. Devolve `false` quando é recusada — registro
+  /// ainda ativo, ou com dependentes — com o motivo em [errorMessage].
+  Future<bool> purgeCustomer(String id) => _save(() async {
+    await repository.purgeCustomer(id);
+    await _reloadAfterArchive();
+  });
+
+  Future<bool> purgeEquipment(String id) => _save(() async {
+    await repository.purgeEquipment(id);
+    await _reloadAfterArchive();
+  });
+
+  Future<bool> purgeCase(String id) => _save(() async {
+    await repository.purgeCase(id);
+    await _reloadAfterArchive();
+  });
+
   Future<ArchivedRecords> fetchArchived() => repository.fetchArchived();
 
   /// Arquivar ou restaurar altera as três listagens de uma vez: um cliente

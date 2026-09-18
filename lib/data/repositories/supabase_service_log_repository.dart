@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 
 import '../sync/keyset_pagination.dart';
 
@@ -11,6 +12,7 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
     : _client = client ?? Supabase.instance.client;
 
   final SupabaseClient _client;
+  static const _uuid = Uuid();
 
   @override
   bool get isDemo => false;
@@ -639,6 +641,33 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
   Future<void> restoreCase(String id) =>
       _setDeletedAt('service_cases', id, null);
 
+  /// Exclusão definitiva direta, sem passar pela fila. As travas de
+  /// arquivamento prévio, papel e dependentes vivem no servidor, em
+  /// `apply_purge_operation`; este caminho existe para completar a
+  /// interface e é usado quando não há espelho local envolvido.
+  Future<void> _purge(String entityType, String id) async {
+    await _client.rpc(
+      'apply_offline_operation',
+      params: {
+        'p_operation_id': _uuid.v4(),
+        'p_entity_type': entityType,
+        'p_entity_id': id,
+        'p_operation': 'purge',
+        'p_payload': {'id': id},
+        'p_expected_revision': 0,
+      },
+    );
+  }
+
+  @override
+  Future<void> purgeCustomer(String id) => _purge('customer', id);
+
+  @override
+  Future<void> purgeEquipment(String id) => _purge('equipment', id);
+
+  @override
+  Future<void> purgeCase(String id) => _purge('service_case', id);
+
   @override
   Future<ArchivedRecords> fetchArchived() async {
     // Arquivados também eram cortados pelo PostgREST. Mesma paginação.
@@ -672,7 +701,7 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
       ''', archived: true),
       _fetchAll(
         'service_cases',
-        'id, case_number, reported_failure, opened_at, deleted_at',
+        'id, case_number, equipment_id, reported_failure, opened_at, deleted_at',
         archived: true,
       ),
     ]);
@@ -718,6 +747,7 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
             return ServiceCaseSummary(
               id: item['id'] as String,
               caseNumber: (item['case_number'] as num?)?.toInt() ?? 0,
+              equipmentId: item['equipment_id'] as String? ?? '',
               equipmentLabel: '',
               reportedFailure: item['reported_failure'] as String? ?? '',
               openedAt:
