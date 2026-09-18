@@ -1,5 +1,6 @@
 import '../models/equipment.dart';
 import '../models/service_case.dart';
+import '../sync/sync_conflict.dart';
 import '../sync/sync_operation.dart';
 
 abstract class ServiceLogRepository {
@@ -39,4 +40,17 @@ abstract class ServiceLogRepository {
 abstract class SyncAwareRepository {
   Future<SyncStatusSnapshot> fetchSyncStatus();
   Future<void> syncPendingChanges();
+
+  /// Operações paradas na fila por divergência de revisão. Enquanto
+  /// houver uma, o download não é aplicado: a fila pendente protege as
+  /// alterações locais de serem sobrepostas, então um conflito não
+  /// resolvido congela a entrada de novidades do servidor.
+  Future<List<SyncConflict>> fetchConflicts();
+
+  /// Aplica a decisão do usuário sobre um conflito. Não sincroniza: a
+  /// tela decide quando enviar, para poder resolver vários de uma vez.
+  Future<void> resolveConflict(
+    String operationId,
+    ConflictResolution resolution,
+  );
 }

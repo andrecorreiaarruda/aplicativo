@@ -104,6 +104,31 @@ class MemorySnapshotStore implements LocalSnapshotStore {
   }
 
   @override
+  Future<void> rebaseOperation(
+    String operationId, {
+    required int baseRevision,
+  }) => _mutex.run(() async {
+    final current = _operations[operationId];
+    if (current == null) return;
+    // `copyWith` não consegue devolver `lastError` a nulo, e um conflito
+    // resolvido precisa sair do estado de conflito, não guardar um texto
+    // vazio que ainda pareça erro.
+    _operations[operationId] = SyncOperation(
+      id: current.id,
+      namespace: current.namespace,
+      entityType: current.entityType,
+      entityId: current.entityId,
+      operation: current.operation,
+      payload: {...current.payload, '_base_revision': baseRevision},
+      createdAt: current.createdAt,
+      attemptCount: 0,
+      queueOrder: current.queueOrder,
+      lastAttemptAt: null,
+      lastError: null,
+    );
+  });
+
+  @override
   Future<String?> readMetadata(String namespace, String key) async =>
       _metadata['$namespace::$key'];
 

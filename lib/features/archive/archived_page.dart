@@ -29,7 +29,12 @@ class _ArchivedPageState extends State<ArchivedPage> {
   }
 
   void _recarregar() {
-    setState(() => _future = widget.controller.fetchArchived());
+    // Bloco, não seta: uma seta devolveria o Future atribuído, e o Flutter
+    // recusa um callback de setState que retorna Future.
+    final proximo = widget.controller.fetchArchived();
+    setState(() {
+      _future = proximo;
+    });
   }
 
   Future<void> _restaurar(Future<bool> Function() acao) async {

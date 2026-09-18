@@ -4,10 +4,7 @@ import 'package:servicelog_ai/features/auth/login_screen.dart';
 void main() {
   group('signUpFeedback', () {
     test('sessão aberta não produz mensagem', () {
-      expect(
-        signUpFeedback(hasSession: true, identityCount: 1),
-        isNull,
-      );
+      expect(signUpFeedback(hasSession: true, identityCount: 1), isNull);
     });
 
     test('identidades vazias apontam e-mail já cadastrado', () {

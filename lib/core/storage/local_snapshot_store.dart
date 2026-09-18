@@ -23,6 +23,14 @@ abstract class LocalSnapshotStore {
   Future<void> recordFailure(String operationId, {required String? error});
   Future<void> removeOperation(String operationId);
 
+  /// Troca a revisão de base de uma operação já enfileirada e limpa o erro
+  /// registrado, devolvendo-a ao estado de "nunca tentada".
+  ///
+  /// É como um conflito é resolvido em favor da versão local: a base zero
+  /// desliga a verificação de revisão no servidor, que então aceita a
+  /// gravação sobrepondo o que estiver lá.
+  Future<void> rebaseOperation(String operationId, {required int baseRevision});
+
   Future<String?> readMetadata(String namespace, String key);
   Future<void> writeMetadata(String namespace, String key, String value);
 

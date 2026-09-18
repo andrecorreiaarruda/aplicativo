@@ -6,6 +6,7 @@ import '../../data/models/dashboard_snapshot.dart';
 import '../../data/models/equipment.dart';
 import '../../data/models/service_case.dart';
 import '../../data/repositories/service_log_repository.dart';
+import '../../data/sync/sync_conflict.dart';
 import '../../data/sync/sync_operation.dart';
 
 class ServiceLogController extends ChangeNotifier {
@@ -265,6 +266,40 @@ class ServiceLogController extends ChangeNotifier {
   Future<void> refreshSyncStatus() async {
     await _refreshSyncStatus();
     notifyListeners();
+  }
+
+  /// Operações paradas por divergência de revisão, para a tela de
+  /// conflitos. Repositórios sem sincronização não têm conflitos.
+  Future<List<SyncConflict>> fetchConflicts() async {
+    final syncRepository = repository is SyncAwareRepository
+        ? repository as SyncAwareRepository
+        : null;
+    if (syncRepository == null) return const [];
+    return syncRepository.fetchConflicts();
+  }
+
+  /// Aplica a decisão e tenta enviar em seguida: um conflito resolvido que
+  /// permanecesse na fila continuaria bloqueando o download.
+  Future<bool> resolveConflict(
+    String operationId,
+    ConflictResolution resolution,
+  ) async {
+    final syncRepository = repository is SyncAwareRepository
+        ? repository as SyncAwareRepository
+        : null;
+    if (syncRepository == null) return false;
+    try {
+      await syncRepository.resolveConflict(operationId, resolution);
+    } catch (error) {
+      errorMessage = _message(error);
+      notifyListeners();
+      return false;
+    }
+    // O envio pode falhar por rede ou por um segundo conflito; a decisão
+    // já está gravada na fila e vale para a próxima tentativa.
+    _retryAttempt = 0;
+    await syncNow();
+    return errorMessage == null;
   }
 
   Future<void> _refreshSyncStatus() async {

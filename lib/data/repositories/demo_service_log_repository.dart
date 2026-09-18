@@ -9,6 +9,7 @@ import '../../core/storage/memory_snapshot_store.dart';
 import '../models/equipment.dart';
 import '../models/service_case.dart';
 import '../models/service_time_metrics.dart';
+import '../sync/sync_conflict.dart';
 import '../sync/sync_operation.dart';
 import '../sync/sync_queue_service.dart';
 import 'service_log_repository.dart';
@@ -1219,7 +1220,9 @@ class DemoServiceLogRepository
     return SyncStatusSnapshot(
       pendingCount: pendingOperations.length,
       conflictCount: pendingOperations
-          .where((item) => item.lastError?.startsWith('CONFLICT:') == true)
+          .where(
+            (item) => item.lastError?.startsWith(conflictErrorPrefix) == true,
+          )
           .length,
       storageLabel: _storage.storageLabel,
       lastSuccessfulSync: lastSync == null ? null : DateTime.tryParse(lastSync),
@@ -1231,6 +1234,41 @@ class DemoServiceLogRepository
   Future<void> syncPendingChanges() async {
     // O replay remoto será ativado no próximo marco da versão 0.4.
   }
+
+  @override
+  Future<List<SyncConflict>> fetchConflicts() => _mutex.run(() async {
+    final queue = _syncQueue;
+    if (queue == null) return const <SyncConflict>[];
+    await _ensureHydrated();
+    final conflicts = <SyncConflict>[];
+    for (final operation in await queue.pending()) {
+      final conflict = SyncConflict.fromOperation(
+        operation,
+        recordLabel: describeEntity(operation.entityType, operation.entityId),
+      );
+      if (conflict != null) conflicts.add(conflict);
+    }
+    return List.unmodifiable(conflicts);
+  });
+
+  @override
+  Future<void> resolveConflict(
+    String operationId,
+    ConflictResolution resolution,
+  ) => _mutex.run(() async {
+    switch (resolution) {
+      case ConflictResolution.discardLocal:
+        // A alteração local some da fila. O espelho ainda mostra o valor
+        // recusado até o próximo download — que só é aplicado quando a
+        // fila esvazia, e por isso é ele que devolve a versão do servidor.
+        await _storage.removeOperation(operationId);
+      case ConflictResolution.keepLocal:
+        // Base zero desliga a verificação de revisão no servidor, que
+        // passa a aceitar a gravação por cima. É o mesmo caminho de um
+        // registro novo, cuja revisão de origem também é desconhecida.
+        await _storage.rebaseOperation(operationId, baseRevision: 0);
+    }
+  });
 
   Future<void> _journal({
     required String entityType,
@@ -1284,6 +1322,42 @@ class DemoServiceLogRepository
     'state': _blankToNull(draft.state),
     'notes': _blankToNull(draft.notes),
   };
+
+  /// Descrição legível de um registro do espelho local, para a tela de
+  /// conflitos. O payload da operação não serve: arquivar e restaurar
+  /// enfileiram apenas o id, e um conflito precisa dizer sobre o que é.
+  ///
+  /// Registros já removidos do espelho caem no rótulo genérico — não é um
+  /// erro, apenas o que sobra quando o download já apagou a linha local.
+  String describeEntity(String entityType, String entityId) {
+    switch (entityType) {
+      case 'customer':
+        for (final item in _customers) {
+          if (item.id == entityId) return item.name;
+        }
+      case 'site':
+        for (final item in _sites) {
+          if (item.id == entityId) return '${item.customer} · ${item.site}';
+        }
+      case 'equipment_model':
+        for (final item in _models) {
+          if (item.id == entityId) return item.label;
+        }
+      case 'equipment':
+        for (final item in _equipment) {
+          if (item.id == entityId) {
+            return '${item.displayName} · ${item.serialLabel}';
+          }
+        }
+      case 'service_case':
+        for (final item in _cases) {
+          if (item.id == entityId) {
+            return 'Chamado ${item.caseNumber} · ${item.reportedFailure}';
+          }
+        }
+    }
+    return 'Registro $entityId';
+  }
 
   int remoteRevision(String entityType, String entityId) =>
       _remoteRevisions['$entityType:$entityId'] ?? 0;

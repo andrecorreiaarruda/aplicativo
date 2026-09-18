@@ -35,9 +35,7 @@ void main() {
   });
 
   test('explanation fica nula quando ai_explanation está ausente', () {
-    final result = SupabaseServiceLogRepository.mapSimilarCaseJson(
-      _baseJson(),
-    );
+    final result = SupabaseServiceLogRepository.mapSimilarCaseJson(_baseJson());
 
     expect(result.explanation, isNull);
   });

@@ -10,7 +10,10 @@ import '../../shared/widgets/orion_brand.dart';
 /// recusar, devolve sucesso com a lista de identidades vazia e não envia
 /// mensagem nenhuma. Tratar isso como cadastro novo manda o usuário
 /// esperar um e-mail que nunca chega — foi o que aconteceu em campo.
-String? signUpFeedback({required bool hasSession, required int? identityCount}) {
+String? signUpFeedback({
+  required bool hasSession,
+  required int? identityCount,
+}) {
   if (hasSession) return null;
   if (identityCount == 0) {
     return 'Este e-mail já tem conta. Volte para "Entrar" e use a sua senha. '

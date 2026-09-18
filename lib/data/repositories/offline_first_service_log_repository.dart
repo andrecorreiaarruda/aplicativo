@@ -3,6 +3,7 @@ import '../models/equipment.dart';
 import '../models/service_case.dart';
 import '../sync/offline_sync_remote.dart';
 import '../sync/supabase_sync_gateway.dart';
+import '../sync/sync_conflict.dart';
 import '../sync/sync_operation.dart';
 import '../sync/sync_queue_service.dart';
 import 'demo_service_log_repository.dart';
@@ -144,7 +145,9 @@ class OfflineFirstServiceLogRepository
     );
     final lastError = await _store.readMetadata(_namespace, 'last_sync_error');
     final conflicts = pending
-        .where((item) => item.lastError?.startsWith('CONFLICT:') == true)
+        .where(
+          (item) => item.lastError?.startsWith(conflictErrorPrefix) == true,
+        )
         .length;
     return SyncStatusSnapshot(
       pendingCount: pending.length,
@@ -154,6 +157,15 @@ class OfflineFirstServiceLogRepository
       lastError: lastError?.isEmpty == true ? null : lastError,
     );
   }
+
+  @override
+  Future<List<SyncConflict>> fetchConflicts() => _local.fetchConflicts();
+
+  @override
+  Future<void> resolveConflict(
+    String operationId,
+    ConflictResolution resolution,
+  ) => _local.resolveConflict(operationId, resolution);
 
   @override
   Future<void> syncPendingChanges() {
@@ -184,7 +196,7 @@ class OfflineFirstServiceLogRepository
             final message =
                 result.message ??
                 'O registro foi alterado no servidor e requer revisão.';
-            final error = 'CONFLICT: $message';
+            final error = '$conflictErrorPrefix $message';
             await _store.recordFailure(operation.id, error: error);
             throw SyncConflictException(message, conflictId: result.conflictId);
           }

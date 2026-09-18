@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:sqflite_common/sqlite_api.dart';
 
 import '../../data/sync/sync_operation.dart';
@@ -247,6 +249,40 @@ class SqliteSnapshotStore implements LocalSnapshotStore {
       where: 'id = ?',
       whereArgs: [operationId],
     );
+  }
+
+  @override
+  Future<void> rebaseOperation(
+    String operationId, {
+    required int baseRevision,
+  }) async {
+    // Ler, reescrever o payload e gravar acontece numa transação: entre a
+    // leitura e a escrita o envio em curso poderia concluir a operação, e
+    // ressuscitá-la aqui a reenviaria depois de aplicada.
+    await _database.transaction((transaction) async {
+      final rows = await transaction.query(
+        'sync_queue',
+        columns: ['payload'],
+        where: 'id = ?',
+        whereArgs: [operationId],
+        limit: 1,
+      );
+      if (rows.isEmpty) return;
+      final payload = Map<String, dynamic>.from(
+        jsonDecode(rows.first['payload'] as String) as Map,
+      )..['_base_revision'] = baseRevision;
+      await transaction.rawUpdate(
+        '''
+        UPDATE sync_queue
+        SET payload = ?,
+            attempt_count = 0,
+            last_attempt_at = NULL,
+            last_error = NULL
+        WHERE id = ?
+        ''',
+        [jsonEncode(payload), operationId],
+      );
+    });
   }
 
   @override

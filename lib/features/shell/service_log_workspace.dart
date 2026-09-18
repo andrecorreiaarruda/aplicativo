@@ -11,6 +11,7 @@ import '../cases/cases_page.dart';
 import '../customers/customers_page.dart';
 import '../dashboard/dashboard_page.dart';
 import '../equipment/equipment_page.dart';
+import '../sync/conflicts_page.dart';
 import 'service_log_controller.dart';
 
 class WorkspaceProfile {
@@ -162,6 +163,13 @@ class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace>
     return widget.demoMode ? widget.storageLabel : 'Sincronizado';
   }
 
+  bool get _hasConflicts => (_controller.syncStatus?.conflictCount ?? 0) > 0;
+
+  Future<void> _openConflicts() async {
+    await showConflictsPage(context, _controller);
+    if (mounted) await _controller.refreshSyncStatus();
+  }
+
   Future<void> _showStorageDetails() async {
     await showDialog<void>(
       context: context,
@@ -225,6 +233,15 @@ class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace>
           ),
         ),
         actions: [
+          if (_hasConflicts)
+            TextButton.icon(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _openConflicts();
+              },
+              icon: const Icon(Icons.sync_problem_rounded),
+              label: const Text('Resolver conflitos'),
+            ),
           if (!widget.demoMode)
             FilledButton.icon(
               onPressed: _controller.syncing
@@ -307,15 +324,35 @@ class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace>
                     ),
                   if (showStorageChip)
                     ActionChip(
-                      avatar: const Icon(Icons.storage_rounded, size: 18),
+                      avatar: Icon(
+                        _hasConflicts
+                            ? Icons.sync_problem_rounded
+                            : Icons.storage_rounded,
+                        size: 18,
+                        color: _hasConflicts ? OrionColors.warning : null,
+                      ),
                       label: Text(_storageStatusLabel()),
-                      onPressed: _showStorageDetails,
+                      // Com conflito, o atalho leva direto a onde se
+                      // resolve: o diálogo de armazenamento não tem o que
+                      // oferecer enquanto a fila está travada.
+                      onPressed: _hasConflicts
+                          ? _openConflicts
+                          : _showStorageDetails,
                     )
                   else
                     IconButton(
-                      tooltip: 'Armazenamento e sincronização',
-                      onPressed: _showStorageDetails,
-                      icon: const Icon(Icons.storage_rounded),
+                      tooltip: _hasConflicts
+                          ? 'Conflitos de sincronização'
+                          : 'Armazenamento e sincronização',
+                      onPressed: _hasConflicts
+                          ? _openConflicts
+                          : _showStorageDetails,
+                      icon: Icon(
+                        _hasConflicts
+                            ? Icons.sync_problem_rounded
+                            : Icons.storage_rounded,
+                        color: _hasConflicts ? OrionColors.warning : null,
+                      ),
                     ),
                   IconButton(
                     tooltip: widget.demoMode
