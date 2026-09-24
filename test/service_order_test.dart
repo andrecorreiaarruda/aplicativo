@@ -375,6 +375,27 @@ void main() {
       expect(ServiceOrderIssuer.empty.isComplete, isFalse);
     });
 
+    test('sem nada salvo, vale o padrão; salvo, vale o salvo', () async {
+      final archive = ServiceOrderArchive(
+        store: MemorySnapshotStore(),
+        files: _MemoryFiles(),
+        defaultIssuer: _issuer,
+      );
+      expect(
+        (await archive.loadIssuer()).responsibleName,
+        'Responsável Exemplo',
+      );
+
+      await archive.saveIssuer(
+        const ServiceOrderIssuer(
+          companyName: 'Outra',
+          responsibleName: 'Outro',
+        ),
+      );
+
+      expect((await archive.loadIssuer()).responsibleName, 'Outro');
+    });
+
     test('é guardado no banco local', () async {
       final archive = ServiceOrderArchive(
         store: MemorySnapshotStore(),

@@ -44,8 +44,13 @@ class ServiceOrderArchive {
   ServiceOrderArchive({
     required LocalSnapshotStore store,
     ServiceOrderFiles? files,
+    this.defaultIssuer = ServiceOrderIssuer.fromEnvironment,
   }) : _store = store,
        files = files ?? createServiceOrderFiles();
+
+  /// Emitente usado enquanto nenhum foi salvo neste computador, e o que o
+  /// botão "Usar meus dados padrão" traz de volta.
+  final ServiceOrderIssuer defaultIssuer;
 
   static const _namespace = 'ordens-servico';
   static const _key = 'emitidas';
@@ -83,12 +88,11 @@ class ServiceOrderArchive {
   static const _issuerKey = 'emitente';
   static String _detailsKey(String caseId) => 'complementos:$caseId';
 
-  /// Dados do emitente; vazios até serem preenchidos pela primeira vez.
+  /// Dados do emitente: os salvos neste computador ou, sem eles, o
+  /// padrão do `.env`.
   Future<ServiceOrderIssuer> loadIssuer() async {
     final json = await _readJson(_issuerKey);
-    return json == null
-        ? ServiceOrderIssuer.empty
-        : ServiceOrderIssuer.fromJson(json);
+    return json == null ? defaultIssuer : ServiceOrderIssuer.fromJson(json);
   }
 
   Future<void> saveIssuer(ServiceOrderIssuer issuer) =>

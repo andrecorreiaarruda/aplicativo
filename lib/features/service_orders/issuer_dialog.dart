@@ -71,6 +71,21 @@ class _IssuerDialogState extends State<_IssuerDialog> {
 
   void _changed() => setState(() {});
 
+  /// Troca o que está na tela pelo padrão do `.env`. Não salva: dá para
+  /// conferir e ajustar antes.
+  void _useDefault() {
+    final issuer = widget.archive.defaultIssuer;
+    _company.text = issuer.companyName;
+    _taxId.text = issuer.taxId;
+    _address.text = issuer.address;
+    _city.text = issuer.city;
+    _name.text = issuer.responsibleName;
+    _title.text = issuer.responsibleTitle;
+    _registration.text = issuer.registration;
+    _phone.text = issuer.phone;
+    _email.text = issuer.email;
+  }
+
   @override
   void dispose() {
     for (final controller in _all) {
@@ -149,8 +164,11 @@ class _IssuerDialogState extends State<_IssuerDialog> {
     final issuer = _issuer;
     return AlertDialog(
       title: const Text('Dados do emitente da OS'),
-      content: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 620),
+      // Largura fixa, e não máxima: o AlertDialog mede a largura intrínseca
+      // do conteúdo, e os LayoutBuilder das linhas duplas não a informam.
+      // Em tela estreita, o próprio diálogo reduz a largura.
+      content: SizedBox(
+        width: 620,
         child: Form(
           key: _formKey,
           child: SingleChildScrollView(
@@ -233,6 +251,12 @@ class _IssuerDialogState extends State<_IssuerDialog> {
         ),
       ),
       actions: [
+        if (widget.archive.defaultIssuer.isComplete)
+          TextButton.icon(
+            onPressed: _saving ? null : _useDefault,
+            icon: const Icon(Icons.restore_rounded),
+            label: const Text('Usar meus dados padrão'),
+          ),
         TextButton(
           onPressed: _saving ? null : () => Navigator.of(context).pop(),
           child: const Text('Cancelar'),

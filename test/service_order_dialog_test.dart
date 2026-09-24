@@ -8,6 +8,7 @@ import 'package:servicelog_ai/data/repositories/demo_service_log_repository.dart
 import 'package:servicelog_ai/features/service_orders/service_order_archive.dart';
 import 'package:servicelog_ai/features/service_orders/service_order_files.dart';
 import 'package:servicelog_ai/features/service_orders/service_order_issuer.dart';
+import 'package:servicelog_ai/features/service_orders/issuer_dialog.dart';
 import 'package:servicelog_ai/features/shell/service_log_workspace.dart';
 
 class _MemoryFiles implements ServiceOrderFiles {
@@ -163,5 +164,73 @@ void main() {
       ),
     );
     expect(chip.selected, isTrue);
+  });
+
+  testWidgets('"Usar meus dados padrão" substitui o que foi salvo', (
+    tester,
+  ) async {
+    final archive = ServiceOrderArchive(
+      store: MemorySnapshotStore(),
+      files: _MemoryFiles(),
+      defaultIssuer: const ServiceOrderIssuer(
+        companyName: 'Oficina Padrão',
+        responsibleName: 'Responsável Padrão',
+        city: 'Curitiba/PR',
+      ),
+    );
+    await archive.saveIssuer(
+      const ServiceOrderIssuer(companyName: '54', responsibleName: 'op'),
+    );
+    await tester.pumpWidget(
+      ServiceOrderScope(
+        archive: archive,
+        child: MaterialApp(
+          home: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showIssuerDialog(context),
+              child: const Text('abrir'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('abrir'));
+    await tester.pumpAndSettle();
+    expect(find.text('op'), findsOneWidget);
+
+    await tester.tap(find.text('Usar meus dados padrão'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Salvar'));
+    await tester.pumpAndSettle();
+
+    final saved = await archive.loadIssuer();
+    expect(saved.companyName, 'Oficina Padrão');
+    expect(saved.responsibleName, 'Responsável Padrão');
+    expect(saved.city, 'Curitiba/PR');
+  });
+
+  testWidgets('sem padrão no .env, o botão não aparece', (tester) async {
+    final archive = ServiceOrderArchive(
+      store: MemorySnapshotStore(),
+      files: _MemoryFiles(),
+      defaultIssuer: ServiceOrderIssuer.empty,
+    );
+    await tester.pumpWidget(
+      ServiceOrderScope(
+        archive: archive,
+        child: MaterialApp(
+          home: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showIssuerDialog(context),
+              child: const Text('abrir'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('abrir'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Usar meus dados padrão'), findsNothing);
   });
 }

@@ -42,6 +42,25 @@ class ServiceOrderIssuer {
 
   static const empty = ServiceOrderIssuer();
 
+  /// Padrão lido do `.env` na compilação, pelas chaves `ORION_EMITENTE_*`.
+  ///
+  /// Os dados do emitente não vão no código: o repositório é público, e
+  /// CNPJ, registro, telefone e e-mail de quem usa o aplicativo não devem
+  /// ficar expostos nele. O `.env` fica só no computador de quem compila,
+  /// fora do Git, e o script de instalação já o repassa ao Flutter. Sem
+  /// as chaves, o padrão é vazio e a tela do emitente pede o preenchimento.
+  static const fromEnvironment = ServiceOrderIssuer(
+    companyName: String.fromEnvironment('ORION_EMITENTE_EMPRESA'),
+    taxId: String.fromEnvironment('ORION_EMITENTE_CNPJ'),
+    address: String.fromEnvironment('ORION_EMITENTE_ENDERECO'),
+    city: String.fromEnvironment('ORION_EMITENTE_CIDADE'),
+    responsibleName: String.fromEnvironment('ORION_EMITENTE_RESPONSAVEL'),
+    responsibleTitle: String.fromEnvironment('ORION_EMITENTE_FORMACAO'),
+    registration: String.fromEnvironment('ORION_EMITENTE_REGISTRO'),
+    phone: String.fromEnvironment('ORION_EMITENTE_TELEFONE'),
+    email: String.fromEnvironment('ORION_EMITENTE_EMAIL'),
+  );
+
   /// O mínimo para a OS ter quem a assine.
   bool get isComplete =>
       companyName.trim().isNotEmpty && responsibleName.trim().isNotEmpty;
