@@ -26,6 +26,8 @@ dependencies:
   # a partir de sqlite3 3.x este pacote deixa de ser necessário.
   sqlite3_flutter_libs: ^0.5.42
   uuid: ^4.5.1
+  # Ordem de serviço em PDF, gerada no próprio aplicativo, sem rede.
+  pdf: ^3.13.1
 
 dev_dependencies:
   flutter_test:
@@ -37,3 +39,7 @@ flutter:
   assets:
     - assets/branding/orion-logo.jpg
     - assets/branding/orion-icon.png
+    # Fonte embutida na ordem de serviço em PDF. As fontes padrão do PDF
+    # não têm todos os caracteres do português usados nos textos livres.
+    - assets/fonts/Roboto-Regular.ttf
+    - assets/fonts/Roboto-Bold.ttf

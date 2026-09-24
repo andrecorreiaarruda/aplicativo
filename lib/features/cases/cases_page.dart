@@ -8,12 +8,23 @@ import '../../shared/widgets/responsive_dialog.dart';
 import '../../shared/widgets/section_header.dart';
 import '../../shared/widgets/status_chip.dart';
 import '../../shared/widgets/archive_confirmation.dart';
+import '../service_orders/service_order_archive.dart';
+import '../service_orders/service_order_dialog.dart';
 import '../shell/service_log_controller.dart';
 import 'case_form.dart';
 
 class CasesPage extends StatefulWidget {
-  const CasesPage({super.key, required this.controller});
+  const CasesPage({
+    super.key,
+    required this.controller,
+    required this.organizationName,
+    required this.issuerName,
+  });
   final ServiceLogController controller;
+
+  /// Vão no cabeçalho e no rodapé da ordem de serviço.
+  final String organizationName;
+  final String issuerName;
 
   @override
   State<CasesPage> createState() => _CasesPageState();
@@ -24,6 +35,49 @@ class _CasesPageState extends State<CasesPage> {
   String _query = '';
   String _filter = 'active';
   String _activityFilter = 'all';
+
+  /// Atendimentos que já têm OS emitida neste computador.
+  Set<String> _withServiceOrder = const {};
+  ServiceOrderArchive? _archive;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final archive = ServiceOrderScope.maybeOf(context);
+    if (archive != _archive) {
+      _archive = archive;
+      _loadServiceOrders();
+    }
+  }
+
+  Future<void> _loadServiceOrders() async {
+    final archive = _archive;
+    if (archive == null) return;
+    try {
+      final all = await archive.loadAll();
+      if (!mounted) return;
+      setState(() {
+        _withServiceOrder = {
+          for (final entry in all.entries)
+            if (entry.value.isNotEmpty) entry.key,
+        };
+      });
+    } catch (error) {
+      // A marca é um atalho visual; sem ela a lista continua usável.
+      debugPrint('ORION: não foi possível ler as OS emitidas: $error');
+    }
+  }
+
+  Future<void> _openServiceOrder(ServiceCase item) async {
+    final issued = await showServiceOrderDialog(
+      context,
+      controller: widget.controller,
+      item: item,
+      organizationName: widget.organizationName,
+      issuerName: widget.issuerName,
+    );
+    if (issued && mounted) await _loadServiceOrders();
+  }
 
   @override
   void dispose() {
@@ -215,8 +269,12 @@ class _CasesPageState extends State<CasesPage> {
                 padding: const EdgeInsets.only(bottom: 12),
                 child: _CaseCard(
                   item: item,
+                  hasServiceOrder: _withServiceOrder.contains(item.id),
                   onTap: () => openForm(item),
                   onArchive: () => _archiveCase(item),
+                  onServiceOrder: _archive == null
+                      ? null
+                      : () => _openServiceOrder(item),
                 ),
               ),
             ),
@@ -229,12 +287,16 @@ class _CasesPageState extends State<CasesPage> {
 class _CaseCard extends StatelessWidget {
   const _CaseCard({
     required this.item,
+    required this.hasServiceOrder,
     required this.onTap,
     required this.onArchive,
+    required this.onServiceOrder,
   });
   final ServiceCase item;
+  final bool hasServiceOrder;
   final VoidCallback onTap;
   final VoidCallback onArchive;
+  final VoidCallback? onServiceOrder;
 
   @override
   Widget build(BuildContext context) {
@@ -271,6 +333,23 @@ class _CaseCard extends StatelessWidget {
                         _TechnicalTag(item.errorCode!),
                       if (item.subsystem?.isNotEmpty == true)
                         _TechnicalTag(item.subsystem!),
+                      if (onServiceOrder != null)
+                        IconButton(
+                          tooltip: hasServiceOrder
+                              ? 'Ordem de serviço (já emitida)'
+                              : 'Emitir ordem de serviço',
+                          onPressed: onServiceOrder,
+                          visualDensity: VisualDensity.compact,
+                          icon: Icon(
+                            hasServiceOrder
+                                ? Icons.picture_as_pdf_rounded
+                                : Icons.picture_as_pdf_outlined,
+                            size: 18,
+                            color: hasServiceOrder
+                                ? context.orion.accent
+                                : null,
+                          ),
+                        ),
                       IconButton(
                         tooltip: 'Arquivar atendimento',
                         onPressed: onArchive,

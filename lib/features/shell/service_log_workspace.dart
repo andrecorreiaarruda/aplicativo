@@ -137,6 +137,8 @@ class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace>
         return CasesPage(
           key: const PageStorageKey('cases'),
           controller: _controller,
+          organizationName: widget.profile.organizationName,
+          issuerName: widget.profile.fullName,
         );
       case 4:
         return AssistantPage(

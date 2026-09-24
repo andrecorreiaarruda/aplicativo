@@ -235,6 +235,16 @@ class ServiceLogController extends ChangeNotifier {
     }
   }
 
+  /// Ver [SyncAwareRepository.isCaseNumberProvisional]. Sem fila offline,
+  /// o atendimento foi gravado direto no servidor e o número é definitivo.
+  Future<bool> isCaseNumberProvisional(String caseId) async {
+    final syncRepository = repository;
+    if (syncRepository is! SyncAwareRepository) return false;
+    return (syncRepository as SyncAwareRepository).isCaseNumberProvisional(
+      caseId,
+    );
+  }
+
   Future<void> signOut() => repository.signOut();
 
   void clearError() {

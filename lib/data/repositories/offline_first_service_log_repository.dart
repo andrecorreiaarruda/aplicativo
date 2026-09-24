@@ -226,6 +226,10 @@ class OfflineFirstServiceLogRepository
   }
 
   @override
+  Future<bool> isCaseNumberProvisional(String caseId) =>
+      _local.isCaseNumberProvisional(caseId);
+
+  @override
   Future<List<SyncConflict>> fetchConflicts() => _local.fetchConflicts();
 
   @override

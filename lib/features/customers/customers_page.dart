@@ -140,9 +140,7 @@ class _CustomersPageState extends State<CustomersPage> {
             ),
           ),
           const SizedBox(height: 20),
-          _ServiceOrderFoundationCard(
-            customerCount: widget.controller.catalog.customers.length,
-          ),
+          const _ServiceOrderDataCard(),
           const SizedBox(height: 18),
           TextField(
             controller: _search,
@@ -220,10 +218,10 @@ class _CustomersPageState extends State<CustomersPage> {
   }
 }
 
-class _ServiceOrderFoundationCard extends StatelessWidget {
-  const _ServiceOrderFoundationCard({required this.customerCount});
-
-  final int customerCount;
+/// Lembra para que servem os dados opcionais do cliente: eles saem no
+/// cabeçalho da ordem de serviço.
+class _ServiceOrderDataCard extends StatelessWidget {
+  const _ServiceOrderDataCard();
 
   @override
   Widget build(BuildContext context) {
@@ -256,38 +254,21 @@ class _ServiceOrderFoundationCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 8,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    Text(
-                      'Base para preenchimento automático da OS',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: context.orion.emphasis,
-                      ),
-                    ),
-                    const Chip(label: Text('Próxima etapa')),
-                  ],
+                Text(
+                  'Dados que saem na ordem de serviço',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: context.orion.emphasis,
+                  ),
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Os dados opcionais de contato e endereço já ficam organizados por cliente. '
-                  'Na etapa de ordens de serviço, cada cliente poderá ter um modelo salvo e o atendimento concluído fornecerá falha, diagnóstico, solução, tempos e validação para preenchimento automático.',
+                  'CNPJ/CPF, contato, telefone, e-mail e endereço preenchem o '
+                  'cabeçalho da OS. Para emitir, use o ícone de PDF no cartão '
+                  'do atendimento, em Atendimentos.',
                   style: TextStyle(
                     color: context.orion.textMuted,
                     height: 1.45,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  customerCount == 1
-                      ? '1 cliente disponível para essa futura integração.'
-                      : '$customerCount clientes disponíveis para essa futura integração.',
-                  style: TextStyle(
-                    color: context.orion.emphasis,
-                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ],

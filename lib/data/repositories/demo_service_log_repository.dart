@@ -302,6 +302,15 @@ class DemoServiceLogRepository
   final bool _useUuidIds;
   final Uuid _uuid;
   final Map<String, int> _remoteRevisions = <String, int>{};
+
+  /// Atendimentos criados neste dispositivo desde o último download.
+  ///
+  /// O número de um atendimento é dado pelo servidor quando ele chega lá;
+  /// o número local é só um marcador. Ele continua valendo até o
+  /// download seguinte trocar o espelho inteiro, e esse download não
+  /// acontece enquanto houver qualquer alteração na fila — por isso não
+  /// basta olhar a revisão, que é confirmada antes do download.
+  final Set<String> _provisionalCaseNumbers = <String>{};
   final List<Equipment> _equipment;
   final List<ServiceCase> _cases;
   final List<EquipmentModelOption> _models;
@@ -1259,6 +1268,8 @@ class DemoServiceLogRepository
       _cases[existingIndex] = item;
     } else {
       _cases.add(item);
+      // Na demonstração não há servidor: o número local é o definitivo.
+      if (!_isDemo) _provisionalCaseNumbers.add(item.id);
     }
     await _journal(
       entityType: 'service_case',
@@ -1382,6 +1393,12 @@ class DemoServiceLogRepository
   Future<void> syncPendingChanges() async {
     // O replay remoto será ativado no próximo marco da versão 0.4.
   }
+
+  @override
+  Future<bool> isCaseNumberProvisional(String caseId) => _mutex.run(() async {
+    await _ensureHydrated();
+    return _provisionalCaseNumbers.contains(caseId);
+  });
 
   @override
   Future<List<SyncConflict>> fetchConflicts() => _mutex.run(() async {
@@ -1575,6 +1592,7 @@ class DemoServiceLogRepository
     _remoteRevisions
       ..clear()
       ..addAll(revisions);
+    _provisionalCaseNumbers.clear();
     final greatestCaseNumber = _cases.fold<int>(
       0,
       (current, item) => item.caseNumber > current ? item.caseNumber : current,
@@ -1717,6 +1735,12 @@ class DemoServiceLogRepository
           root['remoteRevisions'] as Map? ?? const <String, dynamic>{},
         ).map((key, value) => MapEntry(key, (value as num?)?.toInt() ?? 0)),
       );
+    _provisionalCaseNumbers
+      ..clear()
+      ..addAll(
+        (root['provisionalCaseNumbers'] as List? ?? const [])
+            .whereType<String>(),
+      );
   }
 
   Future<T> _mutate<T>(
@@ -1816,6 +1840,7 @@ class DemoServiceLogRepository
     'caseSequence': _caseSequence,
     'catalogSequence': _catalogSequence,
     'remoteRevisions': _remoteRevisions,
+    'provisionalCaseNumbers': _provisionalCaseNumbers.toList(),
   });
 
   String _nextId(String prefix) {

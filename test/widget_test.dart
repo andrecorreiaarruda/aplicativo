@@ -66,10 +66,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    expect(
-      find.text('Base para preenchimento automático da OS'),
-      findsOneWidget,
-    );
+    expect(find.text('Dados que saem na ordem de serviço'), findsOneWidget);
     expect(find.text('Novo cliente'), findsOneWidget);
   });
 

@@ -52,6 +52,11 @@ abstract class SyncAwareRepository {
   Future<SyncStatusSnapshot> fetchSyncStatus();
   Future<void> syncPendingChanges();
 
+  /// Verdadeiro para um atendimento criado neste dispositivo que ainda
+  /// não voltou do servidor. O número dele é provisório: o servidor
+  /// numera na chegada, e o número local pode mudar na sincronização.
+  Future<bool> isCaseNumberProvisional(String caseId);
+
   /// Operações paradas na fila por divergência de revisão. Enquanto
   /// houver uma, o download não é aplicado: a fila pendente protege as
   /// alterações locais de serem sobrepostas, então um conflito não
