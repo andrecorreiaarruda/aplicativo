@@ -34,7 +34,7 @@ class ServiceOrderIssuer {
   /// Formação, como "Engenheiro Eletricista".
   final String responsibleTitle;
 
-  /// Registro profissional, como "CREA-PR 228325/D".
+  /// Registro profissional, como "CREA-PR 000000/D".
   final String registration;
 
   final String phone;
