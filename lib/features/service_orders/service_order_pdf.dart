@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/widgets.dart' show Matrix4;
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -58,10 +59,29 @@ final _date = DateFormat('dd/MM/yyyy');
 /// Largura das colunas de rótulo na tabela de dados, como no modelo.
 const _labelWidth = 76.0;
 
-Future<Uint8List> buildServiceOrderPdf(
+/// O PDF gerado e o quanto foi preciso reduzi-lo.
+class ServiceOrderPdf {
+  const ServiceOrderPdf(this.bytes, this.scale);
+
+  final Uint8List bytes;
+
+  /// 1 quando a OS coube sem ajuste; abaixo disso, a fração do tamanho
+  /// normal em que o conteúdo saiu para caber numa página.
+  final double scale;
+
+  bool get reduced => scale < .995;
+}
+
+/// Gera a OS em uma página só, sempre.
+///
+/// Quando o conteúdo passa de uma página, ele inteiro é reduzido na mesma
+/// proporção até caber — letra, tabelas e espaços juntos, para a folha
+/// continuar com a cara do modelo. Nada é cortado. O rodapé com os dados
+/// do emitente fica fora da redução, sempre no pé da página.
+Future<ServiceOrderPdf> buildServiceOrderPdf(
   ServiceOrder order,
   ServiceOrderAssets assets,
-) {
+) async {
   final document = pw.Document(
     title: 'OS ${order.caseNumber}',
     author: order.issuer.responsibleName,
@@ -69,8 +89,9 @@ Future<Uint8List> buildServiceOrderPdf(
     subject: 'Ordem de serviço ${order.caseNumber}',
   );
 
+  var scale = 1.0;
   document.addPage(
-    pw.MultiPage(
+    pw.Page(
       pageTheme: pw.PageTheme(
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.fromLTRB(56, 34, 56, 26),
@@ -85,50 +106,102 @@ Future<Uint8List> buildServiceOrderPdf(
               ),
             ),
       ),
-      // Um atendimento longo de instalação, com semanas de diário e
-      // muita medição, passa fácil das 20 páginas do padrão.
-      maxPages: 200,
-      header: (context) =>
-          context.pageNumber == 1 ? pw.SizedBox() : _continuationHeader(order),
-      footer: (context) => _footer(order, context),
-      // A faixa de título vai sempre junto do primeiro bloco da seção,
-      // num bloco só (`_together`): sozinha no pé da página, ela não
-      // diria nada.
-      build: (context) => [
-        _header(order, assets),
-        pw.SizedBox(height: 12),
-        _together(
-          children: [
-            _band('Dados do atendimento'),
-            _serviceData(order),
-            pw.SizedBox(height: 8),
-            _times(order),
-          ],
-        ),
-        _gap,
-        _band('Relato, diagnóstico e execução'),
-        _textRows(order.narrative, minHeight: 30),
-        _gap,
-        _band('Materiais aplicados'),
-        _materials(order.materials),
-        _gap,
-        _together(
-          children: [
-            _band('Testes e verificações finais'),
-            _checks(order.checks),
-          ],
-        ),
-        if (order.testNotes.isNotEmpty)
-          _textRows(order.testNotes, openTop: true),
-        _gap,
-        ..._closing(order),
-        pw.SizedBox(height: 10),
-        _signatures(order),
-      ],
+      build: (context) => pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        children: [
+          pw.Expanded(
+            child: _ShrinkToFit(
+              onScale: (value) => scale = value,
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                children: [
+                  _header(order, assets),
+                  pw.SizedBox(height: 12),
+                  _band('Dados do atendimento'),
+                  _serviceData(order),
+                  pw.SizedBox(height: 8),
+                  _times(order),
+                  _gap,
+                  _band('Relato, diagnóstico e execução'),
+                  _textRows(order.narrative, minHeight: 30),
+                  _gap,
+                  _band('Materiais aplicados'),
+                  _materials(order.materials),
+                  _gap,
+                  _band('Testes e verificações finais'),
+                  _checks(order.checks),
+                  if (order.testNotes.isNotEmpty)
+                    _textRows(order.testNotes, openTop: true),
+                  _gap,
+                  _band('Situação final e pendências'),
+                  _situation(order),
+                  _textRows(
+                    [ServiceOrderField('Recomendações', order.recommendations)],
+                    openTop: true,
+                    separators: false,
+                    topPadding: 0,
+                  ),
+                  pw.SizedBox(height: 10),
+                  _signatures(order),
+                ],
+              ),
+            ),
+          ),
+          _footer(order),
+        ],
+      ),
     ),
   );
 
-  return document.save();
+  // A redução é decidida no layout, que só acontece ao salvar.
+  final bytes = await document.save();
+  return ServiceOrderPdf(bytes, scale);
+}
+
+/// Dispõe o filho na largura disponível e altura livre e, se ele passar
+/// da altura disponível, desenha-o reduzido por igual, encostado no topo
+/// e centralizado. [onScale] informa a redução aplicada.
+class _ShrinkToFit extends pw.SingleChildWidget {
+  _ShrinkToFit({required pw.Widget child, required this.onScale})
+    : super(child: child);
+
+  final void Function(double scale) onScale;
+  double _scale = 1;
+
+  @override
+  void layout(
+    pw.Context context,
+    pw.BoxConstraints constraints, {
+    bool parentUsesSize = false,
+  }) {
+    final width = constraints.maxWidth;
+    final height = constraints.maxHeight;
+    child!.layout(
+      context,
+      pw.BoxConstraints(minWidth: width, maxWidth: width),
+      parentUsesSize: true,
+    );
+    final natural = child!.box!.height;
+    _scale = natural <= height ? 1 : height / natural;
+    onScale(_scale);
+    box = PdfRect(0, 0, width, height);
+  }
+
+  @override
+  void paint(pw.Context context) {
+    super.paint(context);
+    final content = child!.box!;
+    final left = box!.left + (box!.width - content.width * _scale) / 2;
+    final bottom = box!.top - content.height * _scale;
+    final matrix = Matrix4.identity()
+      ..translateByDouble(left, bottom, 0, 1)
+      ..scaleByDouble(_scale, _scale, 1, 1);
+    context.canvas
+      ..saveContext()
+      ..setTransform(matrix);
+    child!.paint(context);
+    context.canvas.restoreContext();
+  }
 }
 
 pw.Widget _header(ServiceOrder order, ServiceOrderAssets assets) {
@@ -160,37 +233,7 @@ pw.Widget _header(ServiceOrder order, ServiceOrderAssets assets) {
   );
 }
 
-pw.Widget _continuationHeader(ServiceOrder order) {
-  return pw.Container(
-    margin: const pw.EdgeInsets.only(bottom: 12),
-    padding: const pw.EdgeInsets.only(bottom: 5),
-    decoration: const pw.BoxDecoration(
-      border: pw.Border(
-        bottom: pw.BorderSide(color: _line, width: _lineWidth),
-      ),
-    ),
-    child: pw.Row(
-      children: [
-        pw.Text(
-          'ORDEM DE SERVIÇO  Nº ${order.caseNumber}',
-          style: pw.TextStyle(
-            color: _title,
-            fontSize: 8.5,
-            letterSpacing: 1.2,
-            fontWeight: pw.FontWeight.bold,
-          ),
-        ),
-        pw.Spacer(),
-        pw.Text(
-          'continuação',
-          style: const pw.TextStyle(color: _faint, fontSize: 8),
-        ),
-      ],
-    ),
-  );
-}
-
-pw.Widget _footer(ServiceOrder order, pw.Context context) {
+pw.Widget _footer(ServiceOrder order) {
   const style = pw.TextStyle(fontSize: 7, color: _faint, lineSpacing: 1);
   final issuer = order.issuer;
   return pw.Container(
@@ -215,23 +258,10 @@ pw.Widget _footer(ServiceOrder order, pw.Context context) {
             ],
           ),
         ),
-        if (context.pagesCount > 1)
-          pw.Text('${context.pageNumber}/${context.pagesCount}', style: style),
       ],
     ),
   );
 }
-
-/// Blocos que não podem ser separados por uma quebra de página.
-///
-/// Um `Column` solto é dividido pelo MultiPage entre páginas — e um
-/// `Container` em volta não impede, porque repassa a divisão ao filho.
-pw.Widget _together({required List<pw.Widget> children}) => pw.Inseparable(
-  child: pw.Column(
-    crossAxisAlignment: pw.CrossAxisAlignment.start,
-    children: children,
-  ),
-);
 
 /// Faixa azul-clara com o título da seção.
 pw.Widget _band(String title) {
@@ -381,10 +411,6 @@ pw.Widget _times(ServiceOrder order) {
 }
 
 /// Campos de texto livre, um por linha da tabela, com o rótulo em cima.
-///
-/// A linha de uma tabela não se divide entre páginas. Um procedimento
-/// de várias páginas é quebrado em pedaços antes, e cada pedaço vira uma
-/// linha — só a primeira leva o rótulo.
 pw.Widget _textRows(
   List<ServiceOrderField> fields, {
   double minHeight = 0,
@@ -392,32 +418,25 @@ pw.Widget _textRows(
   bool separators = true,
   double topPadding = 5,
 }) {
-  final rows = <pw.TableRow>[];
-  for (final field in fields) {
-    final pieces = splitForPages(field.value);
-    for (var i = 0; i < pieces.length; i++) {
-      rows.add(
-        pw.TableRow(
-          children: [
-            pw.Container(
-              constraints: pw.BoxConstraints(minHeight: i == 0 ? minHeight : 0),
-              padding: pw.EdgeInsets.fromLTRB(6, i == 0 ? topPadding : 0, 6, 6),
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  if (i == 0) ...[
-                    pw.Text(field.label.toUpperCase(), style: _labelStyle),
-                    pw.SizedBox(height: 3),
-                  ],
-                  if (pieces[i].isNotEmpty) pw.Text(pieces[i]),
-                ],
-              ),
+  final rows = [
+    for (final field in fields)
+      pw.TableRow(
+        children: [
+          pw.Container(
+            constraints: pw.BoxConstraints(minHeight: minHeight),
+            padding: pw.EdgeInsets.fromLTRB(6, topPadding, 6, 6),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(field.label.toUpperCase(), style: _labelStyle),
+                pw.SizedBox(height: 3),
+                if (field.value.trim().isNotEmpty) pw.Text(field.value.trim()),
+              ],
             ),
-          ],
-        ),
-      );
-    }
-  }
+          ),
+        ],
+      ),
+  ];
   return pw.Table(
     border: pw.TableBorder(
       left: const pw.BorderSide(color: _line, width: _lineWidth),
@@ -433,24 +452,6 @@ pw.Widget _textRows(
     defaultColumnWidth: const pw.FlexColumnWidth(),
     children: rows,
   );
-}
-
-/// Divide um texto longo em pedaços que cabem numa página, cortando de
-/// preferência em quebras de linha e, na falta delas, entre palavras.
-List<String> splitForPages(String text, {int maxLength = 1400}) {
-  final trimmed = text.trim();
-  if (trimmed.length <= maxLength) return [trimmed];
-  final pieces = <String>[];
-  var rest = trimmed;
-  while (rest.length > maxLength) {
-    var cut = rest.lastIndexOf('\n', maxLength);
-    if (cut < maxLength ~/ 2) cut = rest.lastIndexOf(' ', maxLength);
-    if (cut <= 0) cut = maxLength;
-    pieces.add(rest.substring(0, cut).trimRight());
-    rest = rest.substring(cut).trimLeft();
-  }
-  if (rest.isNotEmpty) pieces.add(rest);
-  return pieces;
 }
 
 pw.Widget _materials(List<ServiceOrderMaterial> materials) {
@@ -616,25 +617,6 @@ pw.Widget _situation(ServiceOrder order) {
   );
 }
 
-/// Situação final e recomendações. Com recomendações curtas — o caso
-/// comum —, a seção inteira fica numa coluna só e muda de página junta;
-/// só uma recomendação de mais de uma página é deixada quebrar.
-List<pw.Widget> _closing(ServiceOrder order) {
-  final recommendations = _textRows(
-    [ServiceOrderField('Recomendações', order.recommendations)],
-    openTop: true,
-    separators: false,
-    topPadding: 0,
-  );
-  final head = [_band('Situação final e pendências'), _situation(order)];
-  if (splitForPages(order.recommendations).length > 1) {
-    return [_together(children: head), recommendations];
-  }
-  return [
-    _together(children: [...head, recommendations]),
-  ];
-}
-
 /// Local, data e as duas assinaturas, sempre juntos na mesma página.
 pw.Widget _signatures(ServiceOrder order) {
   pw.Widget signature(String name, String caption) => pw.Expanded(
@@ -663,7 +645,8 @@ pw.Widget _signatures(ServiceOrder order) {
   );
 
   final issuer = order.issuer;
-  return _together(
+  return pw.Column(
+    crossAxisAlignment: pw.CrossAxisAlignment.start,
     children: [
       pw.Text(order.placeAndDate),
       pw.SizedBox(height: 28),

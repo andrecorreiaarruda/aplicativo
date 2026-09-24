@@ -119,6 +119,10 @@ class _ServiceOrderDialogState extends State<_ServiceOrderDialog> {
   bool _issuedSomething = false;
   String? _error;
 
+  /// Redução aplicada na última emissão desta janela, para avisar quando
+  /// a letra ficou menor que a normal.
+  double? _lastScale;
+
   /// O atendimento como está agora no controlador. A lista pode ter sido
   /// recarregada — por uma sincronização, por exemplo — desde que a
   /// janela abriu, e a OS deve sair com os dados mais novos.
@@ -245,17 +249,18 @@ class _ServiceOrderDialogState extends State<_ServiceOrderDialog> {
       details: details,
       issuedAt: DateTime.now(),
     );
-    final bytes = await buildServiceOrderPdf(
+    final pdf = await buildServiceOrderPdf(
       order,
       await ServiceOrderAssets.load(),
     );
     final issued = await widget.archive.record(
       caseId: item.id,
       fileName: order.fileName,
-      bytes: bytes,
+      bytes: pdf.bytes,
       issuedAt: order.issuedAt,
     );
     _issuedSomething = true;
+    _lastScale = pdf.scale;
     await _refresh();
     // Abre na hora: quem acabou de emitir quer conferir antes de enviar.
     await widget.archive.files.open(issued.path);
@@ -410,6 +415,21 @@ class _ServiceOrderDialogState extends State<_ServiceOrderDialog> {
                           icon: const Icon(Icons.folder_open_rounded),
                           label: const Text('Abrir pasta'),
                         ),
+                      ),
+                    ],
+                    if (_lastScale != null && _lastScale! < .995) ...[
+                      const SizedBox(height: 10),
+                      _Notice(
+                        color: _lastScale! < .75
+                            ? palette.warning
+                            : palette.accent,
+                        icon: Icons.photo_size_select_small_rounded,
+                        text:
+                            'Para caber numa página, a OS saiu em '
+                            '${(_lastScale! * 100).round()}% do tamanho normal.'
+                            '${_lastScale! < .75 ? ' A letra ficou pequena; '
+                                      'resumir o procedimento ou as medições '
+                                      'no atendimento ajuda.' : ''}',
                       ),
                     ],
                     if (_error != null) ...[

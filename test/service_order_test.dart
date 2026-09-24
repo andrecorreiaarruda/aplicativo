@@ -409,17 +409,7 @@ void main() {
     });
   });
 
-  test('texto longo é dividido em pedaços que cabem na página', () {
-    final semQuebras = List.filled(500, 'palavra').join(' ');
-    final pieces = splitForPages(semQuebras, maxLength: 1000);
-
-    expect(pieces.length, greaterThan(1));
-    expect(pieces.every((piece) => piece.length <= 1000), isTrue);
-    expect(pieces.join(' '), semQuebras);
-    expect(splitForPages('curto'), ['curto']);
-  });
-
-  test('gera um PDF válido com acentos e várias páginas', () async {
+  test('gera sempre uma página, reduzindo o conteúdo que não cabe', () async {
     final assets = ServiceOrderAssets(
       regular: pw.Font.ttf(
         File(
@@ -473,11 +463,21 @@ void main() {
     );
     expect(order.caseNumber, full.caseNumber);
 
-    final bytes = await buildServiceOrderPdf(full, assets);
+    int pages(Uint8List bytes) =>
+        RegExp(r'/Type\s*/Page\b').allMatches(latin1.decode(bytes)).length;
 
-    expect(ascii.decode(bytes.sublist(0, 5)), '%PDF-');
-    final text = latin1.decode(bytes);
-    expect(RegExp(r'/Type\s*/Page\b').allMatches(text).length, greaterThan(1));
+    // Muito conteúdo: continua uma página só, reduzida.
+    final long = await buildServiceOrderPdf(full, assets);
+    expect(ascii.decode(long.bytes.sublist(0, 5)), '%PDF-');
+    expect(pages(long.bytes), 1);
+    expect(long.reduced, isTrue);
+    expect(long.scale, inExclusiveRange(0, 1));
+
+    // Uma OS comum cabe sem redução nenhuma.
+    final normal = await buildServiceOrderPdf(_assemble(_case()), assets);
+    expect(pages(normal.bytes), 1);
+    expect(normal.scale, 1);
+    expect(normal.reduced, isFalse);
   });
 
   group('registro das OS emitidas', () {
