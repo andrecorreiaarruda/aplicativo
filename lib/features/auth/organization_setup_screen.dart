@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../shared/widgets/orion_brand.dart';
+import '../../shared/widgets/labeled_field.dart';
 
 class OrganizationSetupScreen extends StatefulWidget {
   const OrganizationSetupScreen({super.key, required this.onCompleted});
@@ -92,41 +93,45 @@ class _OrganizationSetupScreenState extends State<OrganizationSetupScreen> {
                           'Este procedimento cria a empresa e define sua conta como administradora.',
                         ),
                         const SizedBox(height: 24),
-                        TextFormField(
-                          controller: _fullName,
-                          decoration: const InputDecoration(
-                            labelText: 'Seu nome completo',
+                        LabeledField(
+                          label: 'Seu nome completo',
+                          child: TextFormField(
+                            controller: _fullName,
+                            validator: _required,
                           ),
-                          validator: _required,
                         ),
                         const SizedBox(height: 14),
-                        TextFormField(
-                          controller: _name,
-                          decoration: const InputDecoration(
-                            labelText: 'Nome da empresa',
+                        LabeledField(
+                          label: 'Nome da empresa',
+                          child: TextFormField(
+                            controller: _name,
+                            onChanged: (value) {
+                              if (_slug.text == 'orion' || _slug.text.isEmpty) {
+                                _slug.text = _slugify(value);
+                              }
+                            },
+                            validator: _required,
                           ),
-                          onChanged: (value) {
-                            if (_slug.text == 'orion' || _slug.text.isEmpty) {
-                              _slug.text = _slugify(value);
-                            }
-                          },
-                          validator: _required,
                         ),
                         const SizedBox(height: 14),
-                        TextFormField(
-                          controller: _slug,
-                          decoration: const InputDecoration(
-                            labelText: 'Identificador da empresa',
-                            helperText:
-                                'Somente letras minúsculas, números e hífen.',
+                        LabeledField(
+                          label: 'Identificador da empresa',
+                          child: TextFormField(
+                            controller: _slug,
+                            decoration: const InputDecoration(
+                              helperText:
+                                  'Somente letras minúsculas, números e hífen.',
+                            ),
+                            validator: (value) {
+                              final text = value?.trim() ?? '';
+                              if (!RegExp(
+                                r'^[a-z0-9-]{3,40}$',
+                              ).hasMatch(text)) {
+                                return 'Use de 3 a 40 caracteres válidos.';
+                              }
+                              return null;
+                            },
                           ),
-                          validator: (value) {
-                            final text = value?.trim() ?? '';
-                            if (!RegExp(r'^[a-z0-9-]{3,40}$').hasMatch(text)) {
-                              return 'Use de 3 a 40 caracteres válidos.';
-                            }
-                            return null;
-                          },
                         ),
                         if (_error != null) ...[
                           const SizedBox(height: 14),

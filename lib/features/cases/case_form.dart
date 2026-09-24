@@ -7,6 +7,7 @@ import '../../data/models/equipment.dart';
 import '../../data/models/service_case.dart';
 import '../../data/models/service_time_metrics.dart';
 import '../shell/service_log_controller.dart';
+import '../../shared/widgets/labeled_field.dart';
 
 class CaseForm extends StatefulWidget {
   const CaseForm({super.key, required this.controller, this.initialCase});
@@ -481,119 +482,129 @@ class _OpeningStep extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        DropdownButtonFormField<String>(
-          initialValue: activityType,
-          decoration: const InputDecoration(
-            labelText: 'Classificação do atendimento',
-            prefixIcon: Icon(Icons.category_outlined),
-          ),
-          items: ServiceActivityType.values
-              .map(
-                (value) => DropdownMenuItem(
-                  value: value,
-                  child: Text(ServiceActivityType.label(value)),
-                ),
-              )
-              .toList(),
-          onChanged: (value) {
-            if (value != null) onActivityChanged(value);
-          },
-        ),
-        const SizedBox(height: 14),
-        DropdownButtonFormField<String>(
-          initialValue: equipmentId,
-          isExpanded: true,
-          decoration: const InputDecoration(labelText: 'Equipamento'),
-          items: equipment
-              .map(
-                (item) => DropdownMenuItem(
-                  value: item.id,
-                  child: Text(
-                    '${item.displayName} · ${item.serialLabel}',
-                    overflow: TextOverflow.ellipsis,
+        LabeledField(
+          label: 'Classificação do atendimento',
+          child: DropdownButtonFormField<String>(
+            initialValue: activityType,
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.category_outlined),
+            ),
+            items: ServiceActivityType.values
+                .map(
+                  (value) => DropdownMenuItem(
+                    value: value,
+                    child: Text(ServiceActivityType.label(value)),
                   ),
-                ),
-              )
-              .toList(),
-          onChanged: onEquipmentChanged,
-          validator: (value) =>
-              value == null ? 'Selecione o equipamento.' : null,
+                )
+                .toList(),
+            onChanged: (value) {
+              if (value != null) onActivityChanged(value);
+            },
+          ),
         ),
         const SizedBox(height: 14),
-        TextFormField(
-          controller: failure,
-          maxLines: 4,
-          decoration: InputDecoration(
-            labelText: copy.primaryFieldLabel,
-            hintText: copy.primaryFieldHint,
+        LabeledField(
+          label: 'Equipamento',
+          child: DropdownButtonFormField<String>(
+            initialValue: equipmentId,
+            isExpanded: true,
+            items: equipment
+                .map(
+                  (item) => DropdownMenuItem(
+                    value: item.id,
+                    child: Text(
+                      '${item.displayName} · ${item.serialLabel}',
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                )
+                .toList(),
+            onChanged: onEquipmentChanged,
+            validator: (value) =>
+                value == null ? 'Selecione o equipamento.' : null,
           ),
-          validator: (value) => value?.trim().isEmpty ?? true
-              ? copy.primaryFieldValidation
-              : null,
+        ),
+        const SizedBox(height: 14),
+        LabeledField(
+          label: copy.primaryFieldLabel,
+          child: TextFormField(
+            controller: failure,
+            maxLines: 4,
+            decoration: InputDecoration(hintText: copy.primaryFieldHint),
+            validator: (value) => value?.trim().isEmpty ?? true
+                ? copy.primaryFieldValidation
+                : null,
+          ),
         ),
         const SizedBox(height: 14),
         _AdaptiveFields(
           children: [
-            TextFormField(
-              controller: errorCode,
-              decoration: InputDecoration(labelText: copy.referenceLabel),
+            LabeledField(
+              label: copy.referenceLabel,
+              child: TextFormField(controller: errorCode),
             ),
-            TextFormField(
-              controller: subsystem,
-              decoration: InputDecoration(labelText: copy.subsystemLabel),
+            LabeledField(
+              label: copy.subsystemLabel,
+              child: TextFormField(controller: subsystem),
             ),
           ],
         ),
         const SizedBox(height: 14),
-        TextFormField(
-          controller: errorMessage,
-          maxLines: 2,
-          decoration: InputDecoration(labelText: copy.initialNotesLabel),
+        LabeledField(
+          label: copy.initialNotesLabel,
+          child: TextFormField(controller: errorMessage, maxLines: 2),
         ),
         const SizedBox(height: 14),
         _AdaptiveFields(
           children: [
-            DropdownButtonFormField<String>(
-              initialValue: status,
-              decoration: const InputDecoration(labelText: 'Situação'),
-              items: const [
-                DropdownMenuItem(value: 'open', child: Text('Aberto')),
-                DropdownMenuItem(
-                  value: 'diagnosing',
-                  child: Text('Em andamento'),
-                ),
-                DropdownMenuItem(
-                  value: 'waiting_parts',
-                  child: Text('Aguardando peça / material'),
-                ),
-                DropdownMenuItem(
-                  value: 'waiting_customer',
-                  child: Text('Aguardando cliente / local'),
-                ),
-                DropdownMenuItem(value: 'resolved', child: Text('Concluído')),
-                DropdownMenuItem(value: 'cancelled', child: Text('Cancelado')),
-              ],
-              onChanged: (value) => onStatusChanged(value!),
+            LabeledField(
+              label: 'Situação',
+              child: DropdownButtonFormField<String>(
+                initialValue: status,
+                items: const [
+                  DropdownMenuItem(value: 'open', child: Text('Aberto')),
+                  DropdownMenuItem(
+                    value: 'diagnosing',
+                    child: Text('Em andamento'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'waiting_parts',
+                    child: Text('Aguardando peça / material'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'waiting_customer',
+                    child: Text('Aguardando cliente / local'),
+                  ),
+                  DropdownMenuItem(value: 'resolved', child: Text('Concluído')),
+                  DropdownMenuItem(
+                    value: 'cancelled',
+                    child: Text('Cancelado'),
+                  ),
+                ],
+                onChanged: (value) => onStatusChanged(value!),
+              ),
             ),
-            DropdownButtonFormField<String>(
-              initialValue: impact,
-              decoration: InputDecoration(labelText: copy.impactLabel),
-              items: const [
-                DropdownMenuItem(value: 'none', child: Text('Sem impacto')),
-                DropdownMenuItem(
-                  value: 'degraded',
-                  child: Text('Operação degradada'),
-                ),
-                DropdownMenuItem(
-                  value: 'partial_stop',
-                  child: Text('Parada parcial'),
-                ),
-                DropdownMenuItem(
-                  value: 'total_stop',
-                  child: Text('Parada total'),
-                ),
-              ],
-              onChanged: (value) => onImpactChanged(value!),
+            LabeledField(
+              label: copy.impactLabel,
+              child: DropdownButtonFormField<String>(
+                initialValue: impact,
+                items: const [
+                  DropdownMenuItem(value: 'none', child: Text('Sem impacto')),
+                  DropdownMenuItem(
+                    value: 'degraded',
+                    child: Text('Operação degradada'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'partial_stop',
+                    child: Text('Parada parcial'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'total_stop',
+                    child: Text('Parada total'),
+                  ),
+                ],
+                onChanged: (value) => onImpactChanged(value!),
+              ),
             ),
           ],
         ),
@@ -636,36 +647,38 @@ class _ExecutionStep extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        TextFormField(
-          controller: symptoms,
-          maxLines: 4,
-          decoration: InputDecoration(
-            labelText: copy.executionSummaryLabel,
-            hintText: copy.executionSummaryHint,
+        LabeledField(
+          label: copy.executionSummaryLabel,
+          child: TextFormField(
+            controller: symptoms,
+            maxLines: 4,
+            decoration: InputDecoration(hintText: copy.executionSummaryHint),
           ),
         ),
         const SizedBox(height: 14),
-        TextFormField(
-          controller: measurements,
-          maxLines: 5,
-          decoration: InputDecoration(
-            labelText: copy.measurementsLabel,
-            hintText: copy.measurementsHint,
+        LabeledField(
+          label: copy.measurementsLabel,
+          child: TextFormField(
+            controller: measurements,
+            maxLines: 5,
+            decoration: InputDecoration(hintText: copy.measurementsHint),
           ),
         ),
         const SizedBox(height: 14),
-        TextFormField(
-          controller: rootCause,
-          maxLines: 3,
-          decoration: InputDecoration(labelText: copy.deviationLabel),
+        LabeledField(
+          label: copy.deviationLabel,
+          child: TextFormField(controller: rootCause, maxLines: 3),
         ),
         const SizedBox(height: 14),
-        TextFormField(
-          controller: safetyNotes,
-          maxLines: 3,
-          decoration: const InputDecoration(
-            labelText: 'Notas de segurança',
-            hintText: 'Bloqueios, riscos elétricos, mecânicos ou radiológicos.',
+        LabeledField(
+          label: 'Notas de segurança',
+          child: TextFormField(
+            controller: safetyNotes,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              hintText:
+                  'Bloqueios, riscos elétricos, mecânicos ou radiológicos.',
+            ),
           ),
         ),
         const SizedBox(height: 22),
@@ -910,13 +923,15 @@ class _ManualSessionDialogState extends State<_ManualSessionDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            TextField(
-              controller: _description,
-              minLines: 3,
-              maxLines: 5,
-              decoration: const InputDecoration(
-                labelText: 'Andamento registrado',
-                hintText: 'O que foi executado nesta sessão de trabalho.',
+            LabeledField(
+              label: 'Andamento registrado',
+              child: TextField(
+                controller: _description,
+                minLines: 3,
+                maxLines: 5,
+                decoration: const InputDecoration(
+                  hintText: 'O que foi executado nesta sessão de trabalho.',
+                ),
               ),
             ),
             const SizedBox(height: 14),
@@ -994,64 +1009,74 @@ class _ConclusionStep extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        TextFormField(
-          controller: solution,
-          maxLines: 5,
-          decoration: InputDecoration(
-            labelText: copy.solutionLabel,
-            hintText: copy.solutionHint,
+        LabeledField(
+          label: copy.solutionLabel,
+          child: TextFormField(
+            controller: solution,
+            maxLines: 5,
+            decoration: InputDecoration(hintText: copy.solutionHint),
+            validator: (value) => resolving && (value?.trim().isEmpty ?? true)
+                ? copy.solutionValidation
+                : null,
           ),
-          validator: (value) => resolving && (value?.trim().isEmpty ?? true)
-              ? copy.solutionValidation
-              : null,
         ),
         const SizedBox(height: 14),
-        TextFormField(
-          controller: validation,
-          maxLines: 4,
-          decoration: InputDecoration(
-            labelText: copy.validationLabel,
-            hintText: copy.validationHint,
+        LabeledField(
+          label: copy.validationLabel,
+          child: TextFormField(
+            controller: validation,
+            maxLines: 4,
+            decoration: InputDecoration(hintText: copy.validationHint),
+            validator: (value) => resolving && (value?.trim().isEmpty ?? true)
+                ? copy.validationValidation
+                : null,
           ),
-          validator: (value) => resolving && (value?.trim().isEmpty ?? true)
-              ? copy.validationValidation
-              : null,
         ),
         const SizedBox(height: 14),
         _AdaptiveFields(
           children: [
-            DropdownButtonFormField<String>(
-              initialValue: confidence,
-              decoration: InputDecoration(labelText: copy.confidenceLabel),
-              items: const [
-                DropdownMenuItem(
-                  value: 'unconfirmed',
-                  child: Text('Não confirmada'),
-                ),
-                DropdownMenuItem(value: 'probable', child: Text('Provável')),
-                DropdownMenuItem(value: 'confirmed', child: Text('Confirmada')),
-                DropdownMenuItem(value: 'recurring', child: Text('Recorrente')),
-                DropdownMenuItem(value: 'reviewed', child: Text('Revisada')),
-                DropdownMenuItem(value: 'obsolete', child: Text('Obsoleta')),
-              ],
-              onChanged: (value) => onConfidenceChanged(value!),
+            LabeledField(
+              label: copy.confidenceLabel,
+              child: DropdownButtonFormField<String>(
+                initialValue: confidence,
+                items: const [
+                  DropdownMenuItem(
+                    value: 'unconfirmed',
+                    child: Text('Não confirmada'),
+                  ),
+                  DropdownMenuItem(value: 'probable', child: Text('Provável')),
+                  DropdownMenuItem(
+                    value: 'confirmed',
+                    child: Text('Confirmada'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'recurring',
+                    child: Text('Recorrente'),
+                  ),
+                  DropdownMenuItem(value: 'reviewed', child: Text('Revisada')),
+                  DropdownMenuItem(value: 'obsolete', child: Text('Obsoleta')),
+                ],
+                onChanged: (value) => onConfidenceChanged(value!),
+              ),
             ),
-            DropdownButtonFormField<String>(
-              initialValue: finalStatus,
-              decoration: const InputDecoration(labelText: 'Condição final'),
-              items: const [
-                DropdownMenuItem(
-                  value: 'operational',
-                  child: Text('Operacional'),
-                ),
-                DropdownMenuItem(value: 'degraded', child: Text('Degradado')),
-                DropdownMenuItem(value: 'stopped', child: Text('Parado')),
-                DropdownMenuItem(
-                  value: 'decommissioned',
-                  child: Text('Desativado / removido'),
-                ),
-              ],
-              onChanged: (value) => onFinalStatusChanged(value!),
+            LabeledField(
+              label: 'Condição final',
+              child: DropdownButtonFormField<String>(
+                initialValue: finalStatus,
+                items: const [
+                  DropdownMenuItem(
+                    value: 'operational',
+                    child: Text('Operacional'),
+                  ),
+                  DropdownMenuItem(value: 'degraded', child: Text('Degradado')),
+                  DropdownMenuItem(value: 'stopped', child: Text('Parado')),
+                  DropdownMenuItem(
+                    value: 'decommissioned',
+                    child: Text('Desativado / removido'),
+                  ),
+                ],
+                onChanged: (value) => onFinalStatusChanged(value!),
+              ),
             ),
           ],
         ),
@@ -1065,12 +1090,9 @@ class _ConclusionStep extends StatelessWidget {
           title: Text(copy.followUpLabel),
         ),
         if (requiresFollowUp)
-          TextFormField(
-            controller: followUpNotes,
-            maxLines: 3,
-            decoration: const InputDecoration(
-              labelText: 'Plano de acompanhamento / próxima etapa',
-            ),
+          LabeledField(
+            label: 'Plano de acompanhamento / próxima etapa',
+            child: TextFormField(controller: followUpNotes, maxLines: 3),
           ),
       ],
     );
@@ -1360,22 +1382,26 @@ class _DateTimeField extends StatelessWidget {
     final texto = value == null
         ? (hint ?? 'Não informada')
         : formatter.format(value!);
-    return InputDecorator(
-      decoration: InputDecoration(
-        labelText: label,
-        border: const OutlineInputBorder(),
-        prefixIcon: const Icon(Icons.event_outlined),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              texto,
-              style: TextStyle(color: value == null ? OrionColors.muted : null),
+    return LabeledField(
+      label: label,
+      child: InputDecorator(
+        decoration: InputDecoration(
+          border: const OutlineInputBorder(),
+          prefixIcon: const Icon(Icons.event_outlined),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                texto,
+                style: TextStyle(
+                  color: value == null ? OrionColors.muted : null,
+                ),
+              ),
             ),
-          ),
-          TextButton(onPressed: onPick, child: const Text('Alterar')),
-        ],
+            TextButton(onPressed: onPick, child: const Text('Alterar')),
+          ],
+        ),
       ),
     );
   }

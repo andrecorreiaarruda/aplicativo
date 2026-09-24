@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../data/models/equipment.dart';
 import '../../shared/widgets/responsive_dialog.dart';
 import '../shell/service_log_controller.dart';
+import '../../shared/widgets/labeled_field.dart';
 
 class EquipmentForm extends StatefulWidget {
   const EquipmentForm({super.key, required this.controller, this.equipment});
@@ -291,46 +292,48 @@ class _EquipmentFormState extends State<EquipmentForm> {
                         ) {
                           _modelFieldController = textEditingController;
                           _modelFocusNode = focusNode;
-                          return TextFormField(
-                            controller: textEditingController,
-                            focusNode: focusNode,
-                            textCapitalization: TextCapitalization.words,
-                            decoration: InputDecoration(
-                              labelText: 'Fabricante / modelo',
-                              hintText:
-                                  'Digite, por exemplo: Azurion, Allura ou Versa HD',
-                              prefixIcon: const Icon(Icons.search_rounded),
-                              helperText:
-                                  'Selecione uma correspondência ou cadastre o modelo sem sair deste formulário.',
-                              suffixIcon: textEditingController.text.isEmpty
-                                  ? null
-                                  : IconButton(
-                                      tooltip: 'Limpar modelo',
-                                      onPressed: () {
-                                        textEditingController.clear();
-                                        setState(() => _modelId = null);
-                                        focusNode.requestFocus();
-                                      },
-                                      icon: const Icon(Icons.clear_rounded),
-                                    ),
+                          return LabeledField(
+                            label: 'Fabricante / modelo',
+                            child: TextFormField(
+                              controller: textEditingController,
+                              focusNode: focusNode,
+                              textCapitalization: TextCapitalization.words,
+                              decoration: InputDecoration(
+                                hintText:
+                                    'Digite, por exemplo: Azurion, Allura ou Versa HD',
+                                prefixIcon: const Icon(Icons.search_rounded),
+                                helperText:
+                                    'Selecione uma correspondência ou cadastre o modelo sem sair deste formulário.',
+                                suffixIcon: textEditingController.text.isEmpty
+                                    ? null
+                                    : IconButton(
+                                        tooltip: 'Limpar modelo',
+                                        onPressed: () {
+                                          textEditingController.clear();
+                                          setState(() => _modelId = null);
+                                          focusNode.requestFocus();
+                                        },
+                                        icon: const Icon(Icons.clear_rounded),
+                                      ),
+                              ),
+                              onChanged: (value) {
+                                final selected = _modelById(_modelId);
+                                if (selected != null &&
+                                    _normalize(value) ==
+                                        _normalize(selected.label)) {
+                                  return;
+                                }
+                                if (_modelId != null) {
+                                  setState(() => _modelId = null);
+                                } else {
+                                  setState(() {});
+                                }
+                              },
+                              onFieldSubmitted: (_) => onFieldSubmitted(),
+                              validator: (_) => _modelId == null
+                                  ? 'Selecione uma correspondência ou cadastre um novo modelo.'
+                                  : null,
                             ),
-                            onChanged: (value) {
-                              final selected = _modelById(_modelId);
-                              if (selected != null &&
-                                  _normalize(value) ==
-                                      _normalize(selected.label)) {
-                                return;
-                              }
-                              if (_modelId != null) {
-                                setState(() => _modelId = null);
-                              } else {
-                                setState(() {});
-                              }
-                            },
-                            onFieldSubmitted: (_) => onFieldSubmitted(),
-                            validator: (_) => _modelId == null
-                                ? 'Selecione uma correspondência ou cadastre um novo modelo.'
-                                : null,
                           );
                         },
                     optionsViewBuilder: (context, onSelected, options) {
@@ -408,14 +411,16 @@ class _EquipmentFormState extends State<EquipmentForm> {
                     },
                   ),
                   const SizedBox(height: 14),
-                  TextFormField(
-                    controller: _serial,
-                    decoration: const InputDecoration(
-                      labelText: 'Número de série',
-                      helperText:
-                          'Opcional. Deixe em branco se não for possível '
-                          'identificar; quando informado, precisa ser único.',
-                      helperMaxLines: 2,
+                  LabeledField(
+                    label: 'Número de série',
+                    child: TextFormField(
+                      controller: _serial,
+                      decoration: const InputDecoration(
+                        helperText:
+                            'Opcional. Deixe em branco se não for possível '
+                            'identificar; quando informado, precisa ser único.',
+                        helperMaxLines: 2,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 14),
@@ -433,43 +438,45 @@ class _EquipmentFormState extends State<EquipmentForm> {
                         ) {
                           _siteFieldController = textEditingController;
                           _siteFocusNode = focusNode;
-                          return TextFormField(
-                            controller: textEditingController,
-                            focusNode: focusNode,
-                            textCapitalization: TextCapitalization.words,
-                            decoration: InputDecoration(
-                              labelText: 'Cliente / local de instalação',
-                              hintText:
-                                  'Digite o hospital, clínica, sala, bunker ou cidade',
-                              prefixIcon: const Icon(Icons.business_outlined),
-                              helperText:
-                                  'Selecione uma correspondência ou cadastre o cliente/local sem sair do equipamento.',
-                              suffixIcon: textEditingController.text.isEmpty
-                                  ? null
-                                  : IconButton(
-                                      tooltip: 'Limpar cliente/local',
-                                      onPressed: () {
-                                        textEditingController.clear();
-                                        setState(() => _siteId = null);
-                                        focusNode.requestFocus();
-                                      },
-                                      icon: const Icon(Icons.clear_rounded),
-                                    ),
+                          return LabeledField(
+                            label: 'Cliente / local de instalação',
+                            child: TextFormField(
+                              controller: textEditingController,
+                              focusNode: focusNode,
+                              textCapitalization: TextCapitalization.words,
+                              decoration: InputDecoration(
+                                hintText:
+                                    'Digite o hospital, clínica, sala, bunker ou cidade',
+                                prefixIcon: const Icon(Icons.business_outlined),
+                                helperText:
+                                    'Selecione uma correspondência ou cadastre o cliente/local sem sair do equipamento.',
+                                suffixIcon: textEditingController.text.isEmpty
+                                    ? null
+                                    : IconButton(
+                                        tooltip: 'Limpar cliente/local',
+                                        onPressed: () {
+                                          textEditingController.clear();
+                                          setState(() => _siteId = null);
+                                          focusNode.requestFocus();
+                                        },
+                                        icon: const Icon(Icons.clear_rounded),
+                                      ),
+                              ),
+                              onChanged: (value) {
+                                final selected = _siteById(_siteId);
+                                if (selected != null &&
+                                    _normalize(value) ==
+                                        _normalize(selected.label)) {
+                                  return;
+                                }
+                                if (_siteId != null) {
+                                  setState(() => _siteId = null);
+                                } else {
+                                  setState(() {});
+                                }
+                              },
+                              onFieldSubmitted: (_) => onFieldSubmitted(),
                             ),
-                            onChanged: (value) {
-                              final selected = _siteById(_siteId);
-                              if (selected != null &&
-                                  _normalize(value) ==
-                                      _normalize(selected.label)) {
-                                return;
-                              }
-                              if (_siteId != null) {
-                                setState(() => _siteId = null);
-                              } else {
-                                setState(() {});
-                              }
-                            },
-                            onFieldSubmitted: (_) => onFieldSubmitted(),
                           );
                         },
                     optionsViewBuilder: (context, onSelected, options) {
@@ -553,17 +560,13 @@ class _EquipmentFormState extends State<EquipmentForm> {
                   LayoutBuilder(
                     builder: (context, constraints) {
                       final fields = [
-                        TextFormField(
-                          controller: _software,
-                          decoration: const InputDecoration(
-                            labelText: 'Versão de software',
-                          ),
+                        LabeledField(
+                          label: 'Versão de software',
+                          child: TextFormField(controller: _software),
                         ),
-                        TextFormField(
-                          controller: _hardware,
-                          decoration: const InputDecoration(
-                            labelText: 'Versão de hardware',
-                          ),
+                        LabeledField(
+                          label: 'Versão de hardware',
+                          child: TextFormField(controller: _hardware),
                         ),
                       ];
                       if (constraints.maxWidth < 520) {
@@ -576,6 +579,7 @@ class _EquipmentFormState extends State<EquipmentForm> {
                         );
                       }
                       return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(child: fields[0]),
                           const SizedBox(width: 14),
@@ -585,36 +589,41 @@ class _EquipmentFormState extends State<EquipmentForm> {
                     },
                   ),
                   const SizedBox(height: 14),
-                  DropdownButtonFormField<String>(
-                    initialValue: _status,
-                    decoration: const InputDecoration(
-                      labelText: 'Condição atual',
+                  LabeledField(
+                    label: 'Condição atual',
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _status,
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'operational',
+                          child: Text('Operacional'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'degraded',
+                          child: Text('Degradado'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'stopped',
+                          child: Text('Parado'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'decommissioned',
+                          child: Text('Desativado'),
+                        ),
+                      ],
+                      onChanged: (value) => setState(() => _status = value!),
                     ),
-                    items: const [
-                      DropdownMenuItem(
-                        value: 'operational',
-                        child: Text('Operacional'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'degraded',
-                        child: Text('Degradado'),
-                      ),
-                      DropdownMenuItem(value: 'stopped', child: Text('Parado')),
-                      DropdownMenuItem(
-                        value: 'decommissioned',
-                        child: Text('Desativado'),
-                      ),
-                    ],
-                    onChanged: (value) => setState(() => _status = value!),
                   ),
                   const SizedBox(height: 14),
-                  TextFormField(
-                    controller: _notes,
-                    maxLines: 4,
-                    decoration: const InputDecoration(
-                      labelText: 'Observações',
-                      hintText:
-                          'Configuração especial, acessórios, histórico relevante...',
+                  LabeledField(
+                    label: 'Observações',
+                    child: TextFormField(
+                      controller: _notes,
+                      maxLines: 4,
+                      decoration: const InputDecoration(
+                        hintText:
+                            'Configuração especial, acessórios, histórico relevante...',
+                      ),
                     ),
                   ),
                 ],
@@ -786,45 +795,50 @@ class _EquipmentModelFormState extends State<EquipmentModelForm> {
               key: _formKey,
               child: Column(
                 children: [
-                  TextFormField(
-                    controller: _manufacturer,
-                    textCapitalization: TextCapitalization.words,
-                    decoration: const InputDecoration(labelText: 'Fabricante'),
-                    validator: _required,
-                  ),
-                  const SizedBox(height: 14),
-                  TextFormField(
-                    controller: _family,
-                    textCapitalization: TextCapitalization.words,
-                    decoration: const InputDecoration(
-                      labelText: 'Família / linha (opcional)',
-                      hintText: 'Ex.: Allura Xper, Azurion, Versa HD',
+                  LabeledField(
+                    label: 'Fabricante',
+                    child: TextFormField(
+                      controller: _manufacturer,
+                      textCapitalization: TextCapitalization.words,
+                      validator: _required,
                     ),
                   ),
                   const SizedBox(height: 14),
-                  TextFormField(
-                    controller: _model,
-                    textCapitalization: TextCapitalization.words,
-                    decoration: const InputDecoration(labelText: 'Modelo'),
-                    validator: _required,
-                  ),
-                  const SizedBox(height: 14),
-                  TextFormField(
-                    controller: _modality,
-                    textCapitalization: TextCapitalization.sentences,
-                    decoration: const InputDecoration(
-                      labelText: 'Modalidade (opcional)',
-                      hintText:
-                          'Ex.: Angiografia, Radioterapia, Tomografia, RM',
+                  LabeledField(
+                    label: 'Família / linha (opcional)',
+                    child: TextFormField(
+                      controller: _family,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(
+                        hintText: 'Ex.: Allura Xper, Azurion, Versa HD',
+                      ),
                     ),
                   ),
                   const SizedBox(height: 14),
-                  TextFormField(
-                    controller: _description,
-                    maxLines: 3,
-                    decoration: const InputDecoration(
-                      labelText: 'Descrição opcional',
+                  LabeledField(
+                    label: 'Modelo',
+                    child: TextFormField(
+                      controller: _model,
+                      textCapitalization: TextCapitalization.words,
+                      validator: _required,
                     ),
+                  ),
+                  const SizedBox(height: 14),
+                  LabeledField(
+                    label: 'Modalidade (opcional)',
+                    child: TextFormField(
+                      controller: _modality,
+                      textCapitalization: TextCapitalization.sentences,
+                      decoration: const InputDecoration(
+                        hintText:
+                            'Ex.: Angiografia, Radioterapia, Tomografia, RM',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  LabeledField(
+                    label: 'Descrição opcional',
+                    child: TextFormField(controller: _description, maxLines: 3),
                   ),
                 ],
               ),
@@ -942,45 +956,45 @@ class _CustomerFormState extends State<CustomerForm> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  TextFormField(
-                    controller: _name,
-                    textCapitalization: TextCapitalization.words,
-                    decoration: const InputDecoration(
-                      labelText: 'Nome do cliente',
-                      helperText: 'Este é o único campo obrigatório.',
-                    ),
-                    validator: _required,
-                  ),
-                  const SizedBox(height: 14),
-                  TextFormField(
-                    controller: _taxId,
-                    decoration: const InputDecoration(
-                      labelText: 'CNPJ / identificação (opcional)',
+                  LabeledField(
+                    label: 'Nome do cliente',
+                    child: TextFormField(
+                      controller: _name,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(
+                        helperText: 'Este é o único campo obrigatório.',
+                      ),
+                      validator: _required,
                     ),
                   ),
                   const SizedBox(height: 14),
-                  TextFormField(
-                    controller: _contactName,
-                    textCapitalization: TextCapitalization.words,
-                    decoration: const InputDecoration(
-                      labelText: 'Pessoa de contato (opcional)',
+                  LabeledField(
+                    label: 'CNPJ / identificação (opcional)',
+                    child: TextFormField(controller: _taxId),
+                  ),
+                  const SizedBox(height: 14),
+                  LabeledField(
+                    label: 'Pessoa de contato (opcional)',
+                    child: TextFormField(
+                      controller: _contactName,
+                      textCapitalization: TextCapitalization.words,
                     ),
                   ),
                   const SizedBox(height: 14),
                   LayoutBuilder(
                     builder: (context, constraints) {
-                      final phone = TextFormField(
-                        controller: _phone,
-                        keyboardType: TextInputType.phone,
-                        decoration: const InputDecoration(
-                          labelText: 'Telefone (opcional)',
+                      final phone = LabeledField(
+                        label: 'Telefone (opcional)',
+                        child: TextFormField(
+                          controller: _phone,
+                          keyboardType: TextInputType.phone,
                         ),
                       );
-                      final email = TextFormField(
-                        controller: _email,
-                        keyboardType: TextInputType.emailAddress,
-                        decoration: const InputDecoration(
-                          labelText: 'E-mail (opcional)',
+                      final email = LabeledField(
+                        label: 'E-mail (opcional)',
+                        child: TextFormField(
+                          controller: _email,
+                          keyboardType: TextInputType.emailAddress,
                         ),
                       );
                       if (constraints.maxWidth < 520) {
@@ -989,6 +1003,7 @@ class _CustomerFormState extends State<CustomerForm> {
                         );
                       }
                       return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(child: phone),
                           const SizedBox(width: 14),
@@ -998,30 +1013,30 @@ class _CustomerFormState extends State<CustomerForm> {
                     },
                   ),
                   const SizedBox(height: 14),
-                  TextFormField(
-                    controller: _address,
-                    textCapitalization: TextCapitalization.words,
-                    decoration: const InputDecoration(
-                      labelText: 'Endereço (opcional)',
+                  LabeledField(
+                    label: 'Endereço (opcional)',
+                    child: TextFormField(
+                      controller: _address,
+                      textCapitalization: TextCapitalization.words,
                     ),
                   ),
                   const SizedBox(height: 14),
                   LayoutBuilder(
                     builder: (context, constraints) {
-                      final city = TextFormField(
-                        controller: _city,
-                        textCapitalization: TextCapitalization.words,
-                        decoration: const InputDecoration(
-                          labelText: 'Cidade (opcional)',
+                      final city = LabeledField(
+                        label: 'Cidade (opcional)',
+                        child: TextFormField(
+                          controller: _city,
+                          textCapitalization: TextCapitalization.words,
                         ),
                       );
-                      final state = TextFormField(
-                        controller: _state,
-                        textCapitalization: TextCapitalization.characters,
-                        maxLength: 2,
-                        decoration: const InputDecoration(
-                          labelText: 'UF (opcional)',
-                          counterText: '',
+                      final state = LabeledField(
+                        label: 'UF (opcional)',
+                        child: TextFormField(
+                          controller: _state,
+                          textCapitalization: TextCapitalization.characters,
+                          maxLength: 2,
+                          decoration: const InputDecoration(counterText: ''),
                         ),
                       );
                       if (constraints.maxWidth < 440) {
@@ -1030,6 +1045,7 @@ class _CustomerFormState extends State<CustomerForm> {
                         );
                       }
                       return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(flex: 3, child: city),
                           const SizedBox(width: 14),
@@ -1039,13 +1055,15 @@ class _CustomerFormState extends State<CustomerForm> {
                     },
                   ),
                   const SizedBox(height: 14),
-                  TextFormField(
-                    controller: _notes,
-                    maxLines: 4,
-                    decoration: const InputDecoration(
-                      labelText: 'Observações (opcional)',
-                      hintText:
-                          'Informações úteis para atendimento, acesso e faturamento.',
+                  LabeledField(
+                    label: 'Observações (opcional)',
+                    child: TextFormField(
+                      controller: _notes,
+                      maxLines: 4,
+                      decoration: const InputDecoration(
+                        hintText:
+                            'Informações úteis para atendimento, acesso e faturamento.',
+                      ),
                     ),
                   ),
                 ],
@@ -1156,51 +1174,53 @@ class _SiteFormState extends State<SiteForm> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  DropdownButtonFormField<String>(
-                    initialValue: _customerId,
-                    isExpanded: true,
-                    decoration: const InputDecoration(labelText: 'Cliente'),
-                    items: customers
-                        .map(
-                          (item) => DropdownMenuItem(
-                            value: item.id,
-                            child: Text(
-                              item.name,
-                              overflow: TextOverflow.ellipsis,
+                  LabeledField(
+                    label: 'Cliente',
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _customerId,
+                      isExpanded: true,
+                      items: customers
+                          .map(
+                            (item) => DropdownMenuItem(
+                              value: item.id,
+                              child: Text(
+                                item.name,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (value) => setState(() => _customerId = value),
-                    validator: (value) =>
-                        value == null ? 'Selecione o cliente.' : null,
+                          )
+                          .toList(),
+                      onChanged: (value) => setState(() => _customerId = value),
+                      validator: (value) =>
+                          value == null ? 'Selecione o cliente.' : null,
+                    ),
                   ),
                   const SizedBox(height: 14),
-                  TextFormField(
-                    controller: _site,
-                    textCapitalization: TextCapitalization.words,
-                    decoration: const InputDecoration(
-                      labelText: 'Unidade / sala / bunker',
+                  LabeledField(
+                    label: 'Unidade / sala / bunker',
+                    child: TextFormField(
+                      controller: _site,
+                      textCapitalization: TextCapitalization.words,
+                      validator: _required,
                     ),
-                    validator: _required,
                   ),
                   const SizedBox(height: 14),
                   LayoutBuilder(
                     builder: (context, constraints) {
-                      final city = TextFormField(
-                        controller: _city,
-                        textCapitalization: TextCapitalization.words,
-                        decoration: const InputDecoration(
-                          labelText: 'Cidade (opcional)',
+                      final city = LabeledField(
+                        label: 'Cidade (opcional)',
+                        child: TextFormField(
+                          controller: _city,
+                          textCapitalization: TextCapitalization.words,
                         ),
                       );
-                      final state = TextFormField(
-                        controller: _state,
-                        textCapitalization: TextCapitalization.characters,
-                        maxLength: 2,
-                        decoration: const InputDecoration(
-                          labelText: 'UF (opcional)',
-                          counterText: '',
+                      final state = LabeledField(
+                        label: 'UF (opcional)',
+                        child: TextFormField(
+                          controller: _state,
+                          textCapitalization: TextCapitalization.characters,
+                          maxLength: 2,
+                          decoration: const InputDecoration(counterText: ''),
                         ),
                       );
                       if (constraints.maxWidth < 440) {
@@ -1209,6 +1229,7 @@ class _SiteFormState extends State<SiteForm> {
                         );
                       }
                       return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(flex: 3, child: city),
                           const SizedBox(width: 14),
@@ -1218,12 +1239,15 @@ class _SiteFormState extends State<SiteForm> {
                     },
                   ),
                   const SizedBox(height: 14),
-                  TextFormField(
-                    controller: _notes,
-                    maxLines: 3,
-                    decoration: const InputDecoration(
-                      labelText: 'Observações do local (opcional)',
-                      hintText: 'Acesso, andar, sala técnica, contato local...',
+                  LabeledField(
+                    label: 'Observações do local (opcional)',
+                    child: TextFormField(
+                      controller: _notes,
+                      maxLines: 3,
+                      decoration: const InputDecoration(
+                        hintText:
+                            'Acesso, andar, sala técnica, contato local...',
+                      ),
                     ),
                   ),
                 ],
@@ -1385,70 +1409,69 @@ class _CustomerSiteFormState extends State<CustomerSiteForm> {
                     const SizedBox(height: 10),
                   ],
                   if (_newCustomer) ...[
-                    TextFormField(
-                      controller: _customer,
-                      textCapitalization: TextCapitalization.words,
-                      decoration: const InputDecoration(
-                        labelText: 'Nome do cliente',
+                    LabeledField(
+                      label: 'Nome do cliente',
+                      child: TextFormField(
+                        controller: _customer,
+                        textCapitalization: TextCapitalization.words,
+                        validator: _required,
                       ),
-                      validator: _required,
                     ),
                     const SizedBox(height: 14),
-                    TextFormField(
-                      controller: _taxId,
-                      decoration: const InputDecoration(
-                        labelText: 'CNPJ / identificação opcional',
-                      ),
+                    LabeledField(
+                      label: 'CNPJ / identificação opcional',
+                      child: TextFormField(controller: _taxId),
                     ),
                   ] else
-                    DropdownButtonFormField<String>(
-                      initialValue: _customerId,
-                      isExpanded: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Cliente existente',
-                      ),
-                      items: customers
-                          .map(
-                            (item) => DropdownMenuItem(
-                              value: item.id,
-                              child: Text(
-                                item.name,
-                                overflow: TextOverflow.ellipsis,
+                    LabeledField(
+                      label: 'Cliente existente',
+                      child: DropdownButtonFormField<String>(
+                        initialValue: _customerId,
+                        isExpanded: true,
+                        items: customers
+                            .map(
+                              (item) => DropdownMenuItem(
+                                value: item.id,
+                                child: Text(
+                                  item.name,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (value) => setState(() => _customerId = value),
-                      validator: (value) => !_newCustomer && value == null
-                          ? 'Selecione o cliente.'
-                          : null,
+                            )
+                            .toList(),
+                        onChanged: (value) =>
+                            setState(() => _customerId = value),
+                        validator: (value) => !_newCustomer && value == null
+                            ? 'Selecione o cliente.'
+                            : null,
+                      ),
                     ),
                   const SizedBox(height: 14),
-                  TextFormField(
-                    controller: _site,
-                    textCapitalization: TextCapitalization.words,
-                    decoration: const InputDecoration(
-                      labelText: 'Unidade / sala / bunker',
+                  LabeledField(
+                    label: 'Unidade / sala / bunker',
+                    child: TextFormField(
+                      controller: _site,
+                      textCapitalization: TextCapitalization.words,
+                      validator: _required,
                     ),
-                    validator: _required,
                   ),
                   const SizedBox(height: 14),
                   LayoutBuilder(
                     builder: (context, constraints) {
-                      final city = TextFormField(
-                        controller: _city,
-                        textCapitalization: TextCapitalization.words,
-                        decoration: const InputDecoration(
-                          labelText: 'Cidade (opcional)',
+                      final city = LabeledField(
+                        label: 'Cidade (opcional)',
+                        child: TextFormField(
+                          controller: _city,
+                          textCapitalization: TextCapitalization.words,
                         ),
                       );
-                      final state = TextFormField(
-                        controller: _state,
-                        textCapitalization: TextCapitalization.characters,
-                        maxLength: 2,
-                        decoration: const InputDecoration(
-                          labelText: 'UF (opcional)',
-                          counterText: '',
+                      final state = LabeledField(
+                        label: 'UF (opcional)',
+                        child: TextFormField(
+                          controller: _state,
+                          textCapitalization: TextCapitalization.characters,
+                          maxLength: 2,
+                          decoration: const InputDecoration(counterText: ''),
                         ),
                       );
                       if (constraints.maxWidth < 440) {
@@ -1457,6 +1480,7 @@ class _CustomerSiteFormState extends State<CustomerSiteForm> {
                         );
                       }
                       return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(flex: 3, child: city),
                           const SizedBox(width: 14),

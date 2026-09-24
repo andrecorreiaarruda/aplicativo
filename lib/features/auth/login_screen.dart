@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/theme/orion_theme.dart';
 import '../../shared/widgets/orion_brand.dart';
 import 'password_recovery_screen.dart';
+import '../../shared/widgets/labeled_field.dart';
 
 /// Mensagem a exibir depois de um cadastro que não abriu sessão.
 ///
@@ -293,46 +294,50 @@ class _LoginForm extends StatelessWidget {
                 : (values) => onModeChanged(values.first),
           ),
           const SizedBox(height: 22),
-          TextFormField(
-            controller: email,
-            keyboardType: TextInputType.emailAddress,
-            autofillHints: const [AutofillHints.email],
-            decoration: const InputDecoration(
-              labelText: 'E-mail',
-              prefixIcon: Icon(Icons.mail_outline_rounded),
+          LabeledField(
+            label: 'E-mail',
+            child: TextFormField(
+              controller: email,
+              keyboardType: TextInputType.emailAddress,
+              autofillHints: const [AutofillHints.email],
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.mail_outline_rounded),
+              ),
+              validator: (value) {
+                final text = value?.trim() ?? '';
+                if (!text.contains('@') || !text.contains('.')) {
+                  return 'Informe um e-mail válido.';
+                }
+                return null;
+              },
             ),
-            validator: (value) {
-              final text = value?.trim() ?? '';
-              if (!text.contains('@') || !text.contains('.')) {
-                return 'Informe um e-mail válido.';
-              }
-              return null;
-            },
           ),
           const SizedBox(height: 14),
-          TextFormField(
-            controller: password,
-            obscureText: obscure,
-            autofillHints: const [AutofillHints.password],
-            onFieldSubmitted: (_) => onSubmit(),
-            decoration: InputDecoration(
-              labelText: 'Senha',
-              prefixIcon: const Icon(Icons.lock_outline_rounded),
-              suffixIcon: IconButton(
-                onPressed: onToggleObscure,
-                icon: Icon(
-                  obscure
-                      ? Icons.visibility_rounded
-                      : Icons.visibility_off_rounded,
+          LabeledField(
+            label: 'Senha',
+            child: TextFormField(
+              controller: password,
+              obscureText: obscure,
+              autofillHints: const [AutofillHints.password],
+              onFieldSubmitted: (_) => onSubmit(),
+              decoration: InputDecoration(
+                prefixIcon: const Icon(Icons.lock_outline_rounded),
+                suffixIcon: IconButton(
+                  onPressed: onToggleObscure,
+                  icon: Icon(
+                    obscure
+                        ? Icons.visibility_rounded
+                        : Icons.visibility_off_rounded,
+                  ),
                 ),
               ),
+              validator: (value) {
+                if ((value ?? '').length < 8) {
+                  return 'Use pelo menos 8 caracteres.';
+                }
+                return null;
+              },
             ),
-            validator: (value) {
-              if ((value ?? '').length < 8) {
-                return 'Use pelo menos 8 caracteres.';
-              }
-              return null;
-            },
           ),
           if (message != null) ...[
             const SizedBox(height: 14),

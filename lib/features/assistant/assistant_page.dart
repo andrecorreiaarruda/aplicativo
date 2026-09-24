@@ -6,6 +6,7 @@ import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/section_header.dart';
 import '../../shared/widgets/status_chip.dart';
 import '../shell/service_log_controller.dart';
+import '../../shared/widgets/labeled_field.dart';
 
 class AssistantPage extends StatefulWidget {
   const AssistantPage({super.key, required this.controller});
@@ -79,17 +80,19 @@ class _AssistantPageState extends State<AssistantPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                TextFormField(
-                  controller: _query,
-                  minLines: 3,
-                  maxLines: 6,
-                  decoration: const InputDecoration(
-                    labelText: 'Descreva a falha atual',
-                    hintText:
-                        'Ex.: aquisição interrompe após 20 minutos; baixa dose funciona; temperatura elevada no módulo...',
-                    prefixIcon: Padding(
-                      padding: EdgeInsets.only(bottom: 60),
-                      child: Icon(Icons.auto_awesome_rounded),
+                LabeledField(
+                  label: 'Descreva a falha atual',
+                  child: TextFormField(
+                    controller: _query,
+                    minLines: 3,
+                    maxLines: 6,
+                    decoration: const InputDecoration(
+                      hintText:
+                          'Ex.: aquisição interrompe após 20 minutos; baixa dose funciona; temperatura elevada no módulo...',
+                      prefixIcon: Padding(
+                        padding: EdgeInsets.only(bottom: 60),
+                        child: Icon(Icons.auto_awesome_rounded),
+                      ),
                     ),
                   ),
                 ),
@@ -97,44 +100,40 @@ class _AssistantPageState extends State<AssistantPage> {
                 LayoutBuilder(
                   builder: (context, constraints) {
                     final fields = [
-                      DropdownButtonFormField<String>(
-                        initialValue: _equipmentId ?? '',
-                        isExpanded: true,
-                        decoration: const InputDecoration(
-                          labelText: 'Equipamento (opcional)',
-                        ),
-                        items: [
-                          const DropdownMenuItem<String>(
-                            value: '',
-                            child: Text('Qualquer equipamento'),
-                          ),
-                          ...widget.controller.equipment.map(
-                            (item) => DropdownMenuItem<String>(
-                              value: item.id,
-                              child: Text(
-                                '${item.displayName} · ${item.serialLabel}',
-                                overflow: TextOverflow.ellipsis,
+                      LabeledField(
+                        label: 'Equipamento (opcional)',
+                        child: DropdownButtonFormField<String>(
+                          initialValue: _equipmentId ?? '',
+                          isExpanded: true,
+                          items: [
+                            const DropdownMenuItem<String>(
+                              value: '',
+                              child: Text('Qualquer equipamento'),
+                            ),
+                            ...widget.controller.equipment.map(
+                              (item) => DropdownMenuItem<String>(
+                                value: item.id,
+                                child: Text(
+                                  '${item.displayName} · ${item.serialLabel}',
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
                             ),
+                          ],
+                          onChanged: (value) => setState(
+                            () => _equipmentId = value == null || value.isEmpty
+                                ? null
+                                : value,
                           ),
-                        ],
-                        onChanged: (value) => setState(
-                          () => _equipmentId = value == null || value.isEmpty
-                              ? null
-                              : value,
                         ),
                       ),
-                      TextField(
-                        controller: _errorCode,
-                        decoration: const InputDecoration(
-                          labelText: 'Código de erro',
-                        ),
+                      LabeledField(
+                        label: 'Código de erro',
+                        child: TextField(controller: _errorCode),
                       ),
-                      TextField(
-                        controller: _subsystem,
-                        decoration: const InputDecoration(
-                          labelText: 'Subsistema',
-                        ),
+                      LabeledField(
+                        label: 'Subsistema',
+                        child: TextField(controller: _subsystem),
                       ),
                     ];
                     if (constraints.maxWidth < 760) {

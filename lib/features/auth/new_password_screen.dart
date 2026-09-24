@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/orion_theme.dart';
 import 'password_recovery.dart';
+import '../../shared/widgets/labeled_field.dart';
 
 /// Segunda metade da recuperação: define a senha nova.
 ///
@@ -99,38 +100,42 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
                     style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
                   ),
                   const SizedBox(height: 24),
-                  TextFormField(
-                    controller: _password,
-                    obscureText: _obscure,
-                    autofocus: true,
-                    autofillHints: const [AutofillHints.newPassword],
-                    decoration: InputDecoration(
-                      labelText: 'Senha nova',
-                      prefixIcon: const Icon(Icons.lock_outline_rounded),
-                      suffixIcon: IconButton(
-                        tooltip: _obscure ? 'Mostrar senha' : 'Ocultar senha',
-                        onPressed: () => setState(() => _obscure = !_obscure),
-                        icon: Icon(
-                          _obscure
-                              ? Icons.visibility_rounded
-                              : Icons.visibility_off_rounded,
+                  LabeledField(
+                    label: 'Senha nova',
+                    child: TextFormField(
+                      controller: _password,
+                      obscureText: _obscure,
+                      autofocus: true,
+                      autofillHints: const [AutofillHints.newPassword],
+                      decoration: InputDecoration(
+                        prefixIcon: const Icon(Icons.lock_outline_rounded),
+                        suffixIcon: IconButton(
+                          tooltip: _obscure ? 'Mostrar senha' : 'Ocultar senha',
+                          onPressed: () => setState(() => _obscure = !_obscure),
+                          icon: Icon(
+                            _obscure
+                                ? Icons.visibility_rounded
+                                : Icons.visibility_off_rounded,
+                          ),
                         ),
                       ),
+                      validator: validateNewPassword,
                     ),
-                    validator: validateNewPassword,
                   ),
                   const SizedBox(height: 14),
-                  TextFormField(
-                    controller: _confirmation,
-                    obscureText: _obscure,
-                    autofillHints: const [AutofillHints.newPassword],
-                    onFieldSubmitted: (_) => _save(),
-                    decoration: const InputDecoration(
-                      labelText: 'Repita a senha nova',
-                      prefixIcon: Icon(Icons.lock_reset_rounded),
+                  LabeledField(
+                    label: 'Repita a senha nova',
+                    child: TextFormField(
+                      controller: _confirmation,
+                      obscureText: _obscure,
+                      autofillHints: const [AutofillHints.newPassword],
+                      onFieldSubmitted: (_) => _save(),
+                      decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.lock_reset_rounded),
+                      ),
+                      validator: (value) =>
+                          validatePasswordConfirmation(value, _password.text),
                     ),
-                    validator: (value) =>
-                        validatePasswordConfirmation(value, _password.text),
                   ),
                   if (_error != null) ...[
                     const SizedBox(height: 14),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/orion_theme.dart';
 import 'password_recovery.dart';
+import '../../shared/widgets/labeled_field.dart';
 
 /// Primeira metade da recuperação: pede o código e o confere.
 ///
@@ -137,22 +138,24 @@ class _PasswordRecoveryScreenState extends State<PasswordRecoveryScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          TextFormField(
-            controller: _email,
-            keyboardType: TextInputType.emailAddress,
-            autofillHints: const [AutofillHints.email],
-            onFieldSubmitted: (_) => _sendCode(),
-            decoration: const InputDecoration(
-              labelText: 'E-mail',
-              prefixIcon: Icon(Icons.mail_outline_rounded),
+          LabeledField(
+            label: 'E-mail',
+            child: TextFormField(
+              controller: _email,
+              keyboardType: TextInputType.emailAddress,
+              autofillHints: const [AutofillHints.email],
+              onFieldSubmitted: (_) => _sendCode(),
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.mail_outline_rounded),
+              ),
+              validator: (value) {
+                final text = value?.trim() ?? '';
+                if (!text.contains('@') || !text.contains('.')) {
+                  return 'Informe um e-mail válido.';
+                }
+                return null;
+              },
             ),
-            validator: (value) {
-              final text = value?.trim() ?? '';
-              if (!text.contains('@') || !text.contains('.')) {
-                return 'Informe um e-mail válido.';
-              }
-              return null;
-            },
           ),
           const SizedBox(height: 22),
           FilledButton.icon(
@@ -171,17 +174,19 @@ class _PasswordRecoveryScreenState extends State<PasswordRecoveryScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          TextFormField(
-            controller: _code,
-            keyboardType: TextInputType.number,
-            autofillHints: const [AutofillHints.oneTimeCode],
-            autofocus: true,
-            onFieldSubmitted: (_) => _verifyCode(),
-            decoration: const InputDecoration(
-              labelText: 'Código',
-              prefixIcon: Icon(Icons.pin_outlined),
+          LabeledField(
+            label: 'Código',
+            child: TextFormField(
+              controller: _code,
+              keyboardType: TextInputType.number,
+              autofillHints: const [AutofillHints.oneTimeCode],
+              autofocus: true,
+              onFieldSubmitted: (_) => _verifyCode(),
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.pin_outlined),
+              ),
+              validator: validateRecoveryCode,
             ),
-            validator: validateRecoveryCode,
           ),
           const SizedBox(height: 22),
           FilledButton.icon(
