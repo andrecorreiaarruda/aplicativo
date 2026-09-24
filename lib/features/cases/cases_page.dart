@@ -14,17 +14,8 @@ import '../shell/service_log_controller.dart';
 import 'case_form.dart';
 
 class CasesPage extends StatefulWidget {
-  const CasesPage({
-    super.key,
-    required this.controller,
-    required this.organizationName,
-    required this.issuerName,
-  });
+  const CasesPage({super.key, required this.controller});
   final ServiceLogController controller;
-
-  /// Vão no cabeçalho e no rodapé da ordem de serviço.
-  final String organizationName;
-  final String issuerName;
 
   @override
   State<CasesPage> createState() => _CasesPageState();
@@ -73,8 +64,6 @@ class _CasesPageState extends State<CasesPage> {
       context,
       controller: widget.controller,
       item: item,
-      organizationName: widget.organizationName,
-      issuerName: widget.issuerName,
     );
     if (issued && mounted) await _loadServiceOrders();
   }

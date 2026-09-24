@@ -9,8 +9,10 @@ import 'package:servicelog_ai/data/models/service_case.dart';
 import 'package:servicelog_ai/data/repositories/demo_service_log_repository.dart';
 import 'package:servicelog_ai/features/service_orders/service_order.dart';
 import 'package:servicelog_ai/features/service_orders/service_order_archive.dart';
+import 'package:servicelog_ai/features/service_orders/service_order_details.dart';
 import 'package:servicelog_ai/features/service_orders/service_order_files.dart';
 import 'package:servicelog_ai/features/service_orders/service_order_files_native.dart';
+import 'package:servicelog_ai/features/service_orders/service_order_issuer.dart';
 import 'package:servicelog_ai/features/service_orders/service_order_pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
@@ -83,16 +85,31 @@ const _customer = CustomerOption(
   state: 'SP',
 );
 
-ServiceOrder _assemble(ServiceCase item, {bool withCatalog = true}) =>
-    ServiceOrder.assemble(
-      item: item,
-      equipment: withCatalog ? _equipment : null,
-      site: withCatalog ? _site : null,
-      customer: withCatalog ? _customer : null,
-      organizationName: 'ORION',
-      issuerName: 'André Leite',
-      issuedAt: DateTime(2026, 9, 24, 9, 7),
-    );
+const _issuer = ServiceOrderIssuer(
+  companyName: 'Orion Serviços Eletrônicos',
+  taxId: '00.000.000/0001-00',
+  address: 'Rua Exemplo, 100 — Centro, Curitiba/PR',
+  city: 'Curitiba/PR',
+  responsibleName: 'Responsável Exemplo',
+  responsibleTitle: 'Engenheiro Eletricista',
+  registration: 'CREA-PR 000000/D',
+  phone: '(41) 90000-0000',
+  email: 'contato@example.com',
+);
+
+ServiceOrder _assemble(
+  ServiceCase item, {
+  bool withCatalog = true,
+  ServiceOrderDetails details = const ServiceOrderDetails(),
+}) => ServiceOrder.assemble(
+  item: item,
+  equipment: withCatalog ? _equipment : null,
+  site: withCatalog ? _site : null,
+  customer: withCatalog ? _customer : null,
+  issuer: _issuer,
+  details: details,
+  issuedAt: DateTime(2026, 9, 24, 9, 7),
+);
 
 Map<String, String> _fields(List<ServiceOrderField> fields) => {
   for (final field in fields) field.label: field.value,
@@ -123,93 +140,26 @@ class _MemoryFiles implements ServiceOrderFiles {
 
 void main() {
   group('montagem da OS', () {
-    test('cliente, local e equipamento saem do cadastro', () {
-      final order = _assemble(_case());
-
-      expect(_fields(order.customerFields), {
-        'Cliente': 'Hospital Central',
-        'CNPJ / CPF': '12.345.678/0001-90',
-        'Local': 'Hemodinâmica — Campinas / SP',
-        'Endereço': 'Rua das Flores, 100 — São Paulo / SP',
-        'Contato': 'Maria Souza',
-        'Telefone': '(19) 3333-4444',
-        'E-mail': 'engenharia@hospital.example',
-      });
-      expect(_fields(order.equipmentFields), {
-        'Equipamento': 'Philips Azurion 7',
-        'Modalidade': 'Angiografia',
-        'Número de série': 'AZ-001',
-        'Versão de software': '2.1',
-      });
-      expect(order.statusLabel, 'Concluído');
-      expect(order.activityLabel, 'Manutenção');
-    });
-
-    test('usa os nomes de campo do formulário, sem o "(opcional)"', () {
-      final order = _assemble(_case(subsystem: 'Gerador'));
-      final chamado = _fields(order.sections.first.fields);
-
-      expect(order.sections.map((s) => s.title), [
-        'Chamado',
-        'Diagnóstico',
-        'Conclusão',
-      ]);
-      expect(chamado['Falha relatada'], 'Tubo não emite raios X');
-      expect(chamado['Código de erro'], 'E-1234');
-      expect(chamado['Subsistema'], 'Gerador');
-      expect(chamado['Impacto operacional'], 'Parada total');
-      expect(
-        _fields(order.sections.last.fields)['Condição final do equipamento'],
-        'Operacional',
-      );
-    });
-
-    test('instalação usa os nomes da instalação', () {
+    test('dados do atendimento vêm do cadastro e dos complementos', () {
       final order = _assemble(
-        _case(activityType: ServiceActivityType.installation),
+        _case(),
+        details: const ServiceOrderDetails(
+          requester: 'Enf. Carla',
+          sector: 'Hemodinâmica 2',
+          assetTag: 'PAT-0099',
+        ),
       );
-      final chamado = _fields(order.sections.first.fields);
 
-      expect(chamado.keys, contains('Escopo da instalação'));
-      expect(chamado['Projeto / OS / referência'], 'E-1234');
-      expect(order.sections[1].title, 'Execução');
-      expect(
-        _fields(order.sections.last.fields).keys,
-        contains('Configuração e serviços concluídos'),
-      );
+      expect(order.customer, 'Hospital Central');
+      expect(order.address, 'Rua das Flores, 100 — São Paulo / SP');
+      expect(order.sector, 'Hemodinâmica 2');
+      expect(order.requester, 'Enf. Carla');
+      expect(order.equipment, 'Angiografia');
+      expect(order.serialAndTag, 'AZ-001 / PAT-0099');
+      expect(order.manufacturerModel, 'Philips / Azurion 7');
     });
 
-    test('campos vazios ficam fora', () {
-      final order = _assemble(_case(errorCode: '  '));
-      final labels = [
-        for (final section in order.sections)
-          for (final field in section.fields) field.label,
-      ];
-
-      expect(labels, isNot(contains('Código de erro')));
-      expect(labels, isNot(contains('Subsistema')));
-      expect(labels, isNot(contains('Retorno ou acompanhamento')));
-    });
-
-    test('retorno pedido sem plano ainda aparece', () {
-      final order = _assemble(_case(requiresFollowUp: true));
-
-      expect(
-        _fields(order.sections.last.fields)['Retorno ou acompanhamento'],
-        'Necessário, a combinar.',
-      );
-    });
-
-    test('sem cadastro, o equipamento vem da etiqueta do atendimento', () {
-      final order = _assemble(_case(), withCatalog: false);
-
-      expect(order.customerFields, isEmpty);
-      expect(_fields(order.equipmentFields), {
-        'Equipamento': 'Philips Azurion 7 · AZ-001',
-      });
-    });
-
-    test('sessões em ordem cronológica e tempo técnico só das encerradas', () {
+    test('abertura, início, término e parada', () {
       final order = _assemble(
         _case(
           entries: [
@@ -217,7 +167,7 @@ void main() {
               id: 'b',
               occurredAt: DateTime(2026, 9, 21, 13),
               endedAt: DateTime(2026, 9, 21, 17, 5),
-              description: 'Troca do gerador',
+              description: 'Troca',
             ),
             ServiceProgressEntry(
               id: 'a',
@@ -225,22 +175,105 @@ void main() {
               endedAt: DateTime(2026, 9, 20, 11, 30),
               description: 'Diagnóstico',
             ),
+          ],
+        ),
+      );
+
+      expect(order.openedAt, DateTime(2026, 9, 20, 8, 30));
+      expect(order.startedAt, DateTime(2026, 9, 20, 9));
+      expect(order.finishedAt, DateTime(2026, 9, 21, 17, 5));
+      expect(order.downtimeMinutes, 1440);
+    });
+
+    test('sem conclusão, o término é o fim da última sessão', () {
+      final order = _assemble(
+        _case(
+          status: 'diagnosing',
+          entries: [
             ServiceProgressEntry(
-              id: 'c',
+              id: 'a',
+              occurredAt: DateTime(2026, 9, 20, 9),
+              endedAt: DateTime(2026, 9, 20, 11, 30),
+              description: 'Diagnóstico',
+            ),
+            ServiceProgressEntry(
+              id: 'b',
               occurredAt: DateTime(2026, 9, 22, 8),
-              description: 'Retorno',
+              description: 'Em aberto',
             ),
           ],
         ),
       );
 
-      expect(order.sessions.map((s) => s.description), [
-        'Diagnóstico',
-        'Troca do gerador',
-        'Retorno',
+      expect(order.finishedAt, DateTime(2026, 9, 20, 11, 30));
+    });
+
+    test('manutenção usa os nomes do modelo de OS', () {
+      final order = _assemble(_case());
+      final narrative = _fields(order.narrative);
+
+      expect(narrative.keys, [
+        'Relato do cliente',
+        'Causa identificada',
+        'Procedimento executado',
       ]);
-      expect(order.serviceMinutes, 150 + 245);
-      expect(order.sessions.last.minutes, isNull);
+      expect(
+        narrative['Relato do cliente'],
+        'Tubo não emite raios X\nCódigo de erro: E-1234',
+      );
+      expect(
+        narrative['Procedimento executado'],
+        'Substituído o gerador de alta tensão.',
+      );
+      // Sem causa registrada, a casa sai vazia, mas sai.
+      expect(narrative['Causa identificada'], '');
+      expect(_fields(order.testNotes), {
+        'Validação final': 'Exposições de teste aprovadas.',
+      });
+    });
+
+    test('instalação usa os nomes do formulário da instalação', () {
+      final order = _assemble(
+        _case(activityType: ServiceActivityType.installation),
+      );
+
+      expect(order.narrative.map((field) => field.label), [
+        'Escopo da instalação',
+        'Pendências, desvios ou interferências',
+        'Configuração e serviços concluídos',
+      ]);
+      expect(
+        order.narrative.first.value,
+        contains('Projeto / OS / referência: E-1234'),
+      );
+    });
+
+    test('sem cadastro, o equipamento vem da etiqueta do atendimento', () {
+      final order = _assemble(_case(), withCatalog: false);
+
+      expect(order.customer, isEmpty);
+      expect(order.manufacturerModel, 'Philips Azurion 7 · AZ-001');
+    });
+
+    test('materiais vazios ficam fora', () {
+      final order = _assemble(
+        _case(),
+        details: const ServiceOrderDetails(
+          materials: [
+            ServiceOrderMaterial(description: 'Fusível 10 A', quantity: '2'),
+            ServiceOrderMaterial(),
+          ],
+        ),
+      );
+
+      expect(order.materials.map((m) => m.description), ['Fusível 10 A']);
+    });
+
+    test('local e data por extenso', () {
+      expect(
+        _assemble(_case()).placeAndDate,
+        'Curitiba/PR, 24 de setembro de 2026.',
+      );
     });
 
     test('nome do arquivo leva número, data e hora da emissão', () {
@@ -252,6 +285,117 @@ void main() {
       expect(ServiceOrder.formatMinutes(45), '45 min');
       expect(ServiceOrder.formatMinutes(125), '2h 05min');
     });
+  });
+
+  group('complementos sugeridos', () {
+    test('vêm do cadastro e da condição final', () {
+      final details = ServiceOrderDetails.suggest(
+        item: _case(
+          requiresFollowUp: true,
+          followUpNotes: 'Revisar em 30 dias',
+        ),
+        site: _site,
+        customer: _customer,
+        equipment: _equipment,
+      );
+
+      expect(details.requester, 'Maria Souza');
+      expect(details.sector, 'Hemodinâmica');
+      expect(details.situation, ServiceOrderSituation.released);
+      expect(details.checks, {
+        ServiceOrderCheck.functionalTest,
+        ServiceOrderCheck.followUpNeeded,
+      });
+      expect(details.recommendations, 'Revisar em 30 dias');
+    });
+
+    test('aguardando peça vira "aguardando peça / aprovação"', () {
+      expect(
+        ServiceOrderDetails.suggestSituation(_case(status: 'waiting_parts')),
+        ServiceOrderSituation.awaiting,
+      );
+    });
+
+    test('ida e volta pelo JSON', () {
+      const details = ServiceOrderDetails(
+        requester: 'Carla',
+        sector: 'UTI',
+        assetTag: 'P-1',
+        materials: [
+          ServiceOrderMaterial(
+            description: 'Sensor',
+            partNumber: 'PN-9',
+            quantity: '1',
+            warranty: '90 dias',
+          ),
+        ],
+        checks: {ServiceOrderCheck.calibration, ServiceOrderCheck.alarms},
+        situation: ServiceOrderSituation.restricted,
+        recommendations: 'Trocar filtro',
+      );
+      final back = ServiceOrderDetails.fromJson(
+        jsonDecode(jsonEncode(details.toJson())) as Map,
+      );
+
+      expect(back.requester, 'Carla');
+      expect(back.assetTag, 'P-1');
+      expect(back.materials.single.partNumber, 'PN-9');
+      expect(back.checks, details.checks);
+      expect(back.situation, ServiceOrderSituation.restricted);
+      expect(back.recommendations, 'Trocar filtro');
+    });
+  });
+
+  group('emitente', () {
+    test('linhas do rodapé e da assinatura', () {
+      expect(
+        _issuer.companyLine,
+        'Orion Serviços Eletrônicos – CNPJ 00.000.000/0001-00 – '
+        'Rua Exemplo, 100 — Centro, Curitiba/PR',
+      );
+      expect(
+        _issuer.responsibleLine,
+        'Responsável Exemplo — Engenheiro Eletricista, CREA-PR 000000/D – '
+        '(41) 90000-0000 – contato@example.com',
+      );
+      expect(
+        _issuer.signatureCaption,
+        'Responsável Técnico — CREA-PR 000000/D',
+      );
+    });
+
+    test('campos vazios não deixam separadores soltos', () {
+      const issuer = ServiceOrderIssuer(
+        companyName: 'Oficina',
+        responsibleName: 'Fulano',
+      );
+      expect(issuer.companyLine, 'Oficina');
+      expect(issuer.responsibleLine, 'Fulano');
+      expect(issuer.isComplete, isTrue);
+      expect(ServiceOrderIssuer.empty.isComplete, isFalse);
+    });
+
+    test('é guardado no banco local', () async {
+      final archive = ServiceOrderArchive(
+        store: MemorySnapshotStore(),
+        files: _MemoryFiles(),
+      );
+      expect((await archive.loadIssuer()).isComplete, isFalse);
+
+      await archive.saveIssuer(_issuer);
+
+      expect((await archive.loadIssuer()).registration, 'CREA-PR 000000/D');
+    });
+  });
+
+  test('texto longo é dividido em pedaços que cabem na página', () {
+    final semQuebras = List.filled(500, 'palavra').join(' ');
+    final pieces = splitForPages(semQuebras, maxLength: 1000);
+
+    expect(pieces.length, greaterThan(1));
+    expect(pieces.every((piece) => piece.length <= 1000), isTrue);
+    expect(pieces.join(' '), semQuebras);
+    expect(splitForPages('curto'), ['curto']);
   });
 
   test('gera um PDF válido com acentos e várias páginas', () async {
@@ -278,7 +422,7 @@ void main() {
       _case(
         solutionDetails: List.filled(8, longo).join('\n\n'),
         entries: [
-          for (var i = 0; i < 30; i++)
+          for (var i = 0; i < 3; i++)
             ServiceProgressEntry(
               id: '$i',
               occurredAt: DateTime(2026, 9, 1 + i % 20, 8),
@@ -289,7 +433,26 @@ void main() {
       ),
     );
 
-    final bytes = await buildServiceOrderPdf(order, assets);
+    final full = _assemble(
+      _case(solutionDetails: List.filled(8, longo).join('\n\n')),
+      details: ServiceOrderDetails(
+        materials: [
+          for (var i = 0; i < 12; i++)
+            ServiceOrderMaterial(
+              description: 'Item $i — $longo'.substring(0, 80),
+              partNumber: 'PN-$i',
+              quantity: '$i',
+              warranty: '90 dias',
+            ),
+        ],
+        checks: ServiceOrderCheck.values.toSet(),
+        situation: ServiceOrderSituation.awaiting,
+        recommendations: longo * 3,
+      ),
+    );
+    expect(order.caseNumber, full.caseNumber);
+
+    final bytes = await buildServiceOrderPdf(full, assets);
 
     expect(ascii.decode(bytes.sublist(0, 5)), '%PDF-');
     final text = latin1.decode(bytes);

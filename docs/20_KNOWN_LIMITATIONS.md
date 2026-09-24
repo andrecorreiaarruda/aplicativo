@@ -8,14 +8,16 @@
 4. Anexos não funcionam offline.
 5. O SQLite local mantém o estado operacional em snapshot JSON, não em tabelas normalizadas por entidade.
 6. O cache de perfil permite abrir o workspace offline após um primeiro acesso online, mas fluxos de expiração completa de sessão ainda precisam de homologação por plataforma.
-7. A OS é gerada num modelo único, o PDF padrão ORION. Os modelos por
-   cliente (`service_order_templates`, com arquivo .docx e mapeamento de
-   campos) continuam só como tabela no banco, sem tela.
+7. A OS sai num modelo único, o da ORION. Os modelos por cliente
+   (`service_order_templates`, com arquivo .docx e mapeamento de campos)
+   continuam só como tabela no banco, sem tela.
 8. A OS emitida fica só no computador que a emitiu: o PDF vai para
-   Documentos/ORION ServiceLog/Ordens de serviço e o vínculo com o
-   atendimento, para o banco local. Não sobe para o servidor, e não há
-   assinatura digital. A emissão é recusada enquanto o atendimento criado
-   offline não sincroniza, porque o número dele ainda é provisório.
+   Documentos/ORION ServiceLog/Ordens de serviço, e o vínculo com o
+   atendimento, os complementos (solicitante, patrimônio, materiais,
+   testes, situação final) e os dados do emitente ficam no banco local.
+   Nada disso sobe para o servidor, e não há assinatura digital. A
+   emissão é recusada enquanto o atendimento criado offline não
+   sincroniza, porque o número dele ainda é provisório.
 9. Não há gestão completa de usuários e convites.
 10. O assistente local não usa embeddings; é uma busca heurística de fallback.
 11. Não há suíte E2E com duas instâncias, perda de rede, concorrência e base volumosa.

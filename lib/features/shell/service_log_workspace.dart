@@ -13,6 +13,8 @@ import '../dashboard/dashboard_page.dart';
 import '../equipment/equipment_page.dart';
 import '../sync/conflicts_page.dart';
 import '../../core/theme/appearance_controller.dart';
+import '../service_orders/issuer_dialog.dart';
+import '../service_orders/service_order_archive.dart';
 import 'appearance_dialog.dart';
 import 'service_log_controller.dart';
 
@@ -137,8 +139,6 @@ class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace>
         return CasesPage(
           key: const PageStorageKey('cases'),
           controller: _controller,
-          organizationName: widget.profile.organizationName,
-          issuerName: widget.profile.fullName,
         );
       case 4:
         return AssistantPage(
@@ -377,6 +377,7 @@ class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace>
                     tooltip: 'Conta',
                     onSelected: (value) {
                       if (value == 'appearance') showAppearanceDialog(context);
+                      if (value == 'issuer') showIssuerDialog(context);
                       if (value == 'logout') _controller.signOut();
                     },
                     itemBuilder: (context) => [
@@ -415,6 +416,15 @@ class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace>
                           ),
                         ),
                       ),
+                      if (ServiceOrderScope.maybeOf(context) != null)
+                        const PopupMenuItem(
+                          value: 'issuer',
+                          child: ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(Icons.badge_outlined),
+                            title: Text('Dados do emitente da OS'),
+                          ),
+                        ),
                       if (!widget.demoMode)
                         const PopupMenuItem(
                           value: 'logout',

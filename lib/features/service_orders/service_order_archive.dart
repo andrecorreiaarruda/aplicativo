@@ -4,7 +4,9 @@ import 'dart:typed_data';
 import 'package:flutter/widgets.dart';
 
 import '../../core/storage/local_snapshot_store.dart';
+import 'service_order_details.dart';
 import 'service_order_files.dart';
+import 'service_order_issuer.dart';
 
 /// Uma OS já emitida: o arquivo gravado e quando.
 class IssuedServiceOrder {
@@ -77,6 +79,46 @@ class ServiceOrderArchive {
 
   Future<List<IssuedServiceOrder>> issuedFor(String caseId) async =>
       (await loadAll())[caseId] ?? const [];
+
+  static const _issuerKey = 'emitente';
+  static String _detailsKey(String caseId) => 'complementos:$caseId';
+
+  /// Dados do emitente; vazios até serem preenchidos pela primeira vez.
+  Future<ServiceOrderIssuer> loadIssuer() async {
+    final json = await _readJson(_issuerKey);
+    return json == null
+        ? ServiceOrderIssuer.empty
+        : ServiceOrderIssuer.fromJson(json);
+  }
+
+  Future<void> saveIssuer(ServiceOrderIssuer issuer) =>
+      _store.writeMetadata(_namespace, _issuerKey, jsonEncode(issuer.toJson()));
+
+  /// Complementos digitados na última vez que a janela da OS deste
+  /// atendimento foi usada, ou nulo se nunca foi.
+  Future<ServiceOrderDetails?> loadDetails(String caseId) async {
+    final json = await _readJson(_detailsKey(caseId));
+    return json == null ? null : ServiceOrderDetails.fromJson(json);
+  }
+
+  Future<void> saveDetails(String caseId, ServiceOrderDetails details) =>
+      _store.writeMetadata(
+        _namespace,
+        _detailsKey(caseId),
+        jsonEncode(details.toJson()),
+      );
+
+  Future<Map<dynamic, dynamic>?> _readJson(String key) async {
+    final raw = await _store.readMetadata(_namespace, key);
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      return decoded is Map ? decoded : null;
+    } on FormatException catch (error) {
+      debugPrint('ORION: $key ilegível, ignorando: $error');
+      return null;
+    }
+  }
 
   /// Grava o PDF e registra a emissão no atendimento.
   Future<IssuedServiceOrder> record({

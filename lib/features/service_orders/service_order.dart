@@ -1,7 +1,8 @@
 import '../../data/models/equipment.dart';
 import '../../data/models/service_case.dart';
-import '../../data/models/service_time_metrics.dart';
 import '../cases/activity_copy.dart';
+import 'service_order_details.dart';
+import 'service_order_issuer.dart';
 
 /// Uma linha "nome: valor" da ordem de serviço.
 class ServiceOrderField {
@@ -11,220 +12,202 @@ class ServiceOrderField {
   final String value;
 }
 
-/// Bloco de texto livre, como a solução aplicada. Ocupa a largura toda,
-/// ao contrário dos [ServiceOrderField] do cabeçalho, que vão lado a lado.
-class ServiceOrderSection {
-  const ServiceOrderSection(this.title, this.fields);
-
-  final String title;
-  final List<ServiceOrderField> fields;
-}
-
-class ServiceOrderSession {
-  const ServiceOrderSession({
-    required this.start,
-    required this.description,
-    this.end,
-  });
-
-  final DateTime start;
-  final DateTime? end;
-  final String description;
-
-  int? get minutes => end?.difference(start).inMinutes;
-}
-
-/// Conteúdo de uma ordem de serviço, pronto para ser desenhado.
+/// Conteúdo de uma ordem de serviço, no desenho do modelo em uso pela
+/// ORION, pronto para ser desenhado.
 ///
-/// Fica separado do PDF de propósito: aqui se decide O QUE sai na OS
-/// (quais campos, com que nome, o que fica de fora por estar vazio), e
-/// isso é testável sem abrir o arquivo gerado.
+/// Fica separado do PDF de propósito: aqui se decide O QUE vai em cada
+/// casa do modelo, e isso é testável sem abrir o arquivo gerado.
 class ServiceOrder {
   const ServiceOrder({
     required this.caseNumber,
-    required this.organizationName,
-    required this.issuerName,
     required this.issuedAt,
-    required this.activityLabel,
-    required this.statusLabel,
+    required this.issuer,
+    required this.customer,
+    required this.address,
+    required this.sector,
+    required this.requester,
+    required this.equipment,
+    required this.serialAndTag,
+    required this.manufacturerModel,
     required this.openedAt,
-    required this.customerFields,
-    required this.equipmentFields,
-    required this.sections,
-    required this.sessions,
-    required this.serviceMinutes,
-    this.closedAt,
+    required this.narrative,
+    required this.materials,
+    required this.checks,
+    required this.testNotes,
+    required this.recommendations,
+    this.startedAt,
+    this.finishedAt,
     this.downtimeMinutes,
+    this.situation,
   });
 
   final int caseNumber;
-  final String organizationName;
-  final String issuerName;
   final DateTime issuedAt;
-  final String activityLabel;
-  final String statusLabel;
+  final ServiceOrderIssuer issuer;
+
+  // Dados do atendimento.
+  final String customer;
+  final String address;
+  final String sector;
+  final String requester;
+  final String equipment;
+  final String serialAndTag;
+  final String manufacturerModel;
+
   final DateTime openedAt;
-  final DateTime? closedAt;
-  final List<ServiceOrderField> customerFields;
-  final List<ServiceOrderField> equipmentFields;
-  final List<ServiceOrderSection> sections;
-  final List<ServiceOrderSession> sessions;
 
-  /// Soma das sessões encerradas — a mesma conta do formulário.
-  final int serviceMinutes;
+  /// Início da primeira sessão de trabalho.
+  final DateTime? startedAt;
 
-  /// Calculada pelo servidor. Nula num atendimento que ainda não passou
-  /// por ele; a OS então simplesmente não mostra a linha.
+  /// Conclusão do atendimento ou, sem ela, fim da última sessão.
+  final DateTime? finishedAt;
+
+  /// Calculada pelo servidor; nula num atendimento que ainda não passou
+  /// por ele.
   final int? downtimeMinutes;
 
-  /// Monta a OS a partir do atendimento e do que se sabe sobre o
-  /// equipamento, o local e o cliente.
+  /// Relato, causa e procedimento — sempre os três, mesmo vazios, como no
+  /// modelo.
+  final List<ServiceOrderField> narrative;
+
+  final List<ServiceOrderMaterial> materials;
+  final Set<ServiceOrderCheck> checks;
+
+  /// Medições e validação registradas no atendimento, que o modelo não
+  /// tem onde pôr e saem abaixo da lista de verificações.
+  final List<ServiceOrderField> testNotes;
+
+  final ServiceOrderSituation? situation;
+  final String recommendations;
+
+  /// Monta a OS a partir do atendimento, do cadastro, do emitente e dos
+  /// complementos digitados na janela da OS.
   ///
   /// [equipment], [site] e [customer] podem faltar — um equipamento sem
-  /// local, ou um catálogo que ainda não carregou. A OS sai assim mesmo,
-  /// com o que houver: a etiqueta desnormalizada do atendimento garante
-  /// ao menos a identificação do equipamento.
+  /// local, ou um catálogo que ainda não carregou. A OS sai assim mesmo:
+  /// a etiqueta desnormalizada do atendimento garante ao menos a
+  /// identificação do equipamento.
   factory ServiceOrder.assemble({
     required ServiceCase item,
-    required String organizationName,
-    required String issuerName,
+    required ServiceOrderIssuer issuer,
+    required ServiceOrderDetails details,
     required DateTime issuedAt,
     Equipment? equipment,
     SiteOption? site,
     CustomerOption? customer,
   }) {
     final copy = ActivityCopy.forType(item.activityType);
-
-    final customerName = _text(customer?.name) ?? _text(equipment?.customer);
-    // O local leva a própria cidade: um cliente com várias unidades
-    // costuma ter cadastrado o endereço da sede, não o de cada unidade.
-    final siteName = _joined([
-      _text(site?.site) ?? _text(equipment?.site),
-      site?.locationLabel,
-    ], ' — ');
-    final customerFields = _present([
-      ('Cliente', customerName),
-      ('CNPJ / CPF', customer?.taxId),
-      ('Local', siteName),
-      (
-        'Endereço',
-        _joined([customer?.addressLine, customer?.locationLabel], ' — '),
-      ),
-      ('Contato', customer?.contactName),
-      ('Telefone', customer?.phone),
-      ('E-mail', customer?.email),
-    ]);
-
-    final equipmentFields = equipment == null
-        ? _present([('Equipamento', item.equipmentLabel)])
-        : _present([
-            ('Equipamento', equipment.displayName),
-            ('Modalidade', equipment.modality),
-            ('Número de série', equipment.serialNumber),
-            ('Versão de software', equipment.softwareVersion),
-            ('Versão de hardware', equipment.hardwareVersion),
-          ]);
-
-    final sections = <ServiceOrderSection>[
-      ServiceOrderSection(
-        'Chamado',
-        _present([
-          (copy.primaryFieldLabel, item.reportedFailure),
-          (copy.referenceLabel, item.errorCode),
-          (copy.subsystemLabel, item.subsystem),
-          (copy.initialNotesLabel, item.errorMessage),
-          (copy.impactLabel, labelForImpact(item.operationalImpact)),
-        ]),
-      ),
-      ServiceOrderSection(
-        copy.executionStepTitle,
-        _present([
-          (copy.executionSummaryLabel, item.observedSymptoms),
-          (copy.measurementsLabel, item.measurements),
-          (copy.deviationLabel, item.rootCause),
-          ('Notas de segurança', item.safetyNotes),
-        ]),
-      ),
-      ServiceOrderSection(
-        copy.conclusionStepTitle,
-        _present([
-          (copy.solutionLabel, item.solutionDetails),
-          (copy.validationLabel, item.validationResult),
-          (
-            'Condição final do equipamento',
-            labelForFinalCondition(item.finalEquipmentStatus),
-          ),
-          if (item.requiresFollowUp)
-            (
-              'Retorno ou acompanhamento',
-              _text(item.followUpNotes) ?? 'Necessário, a combinar.',
-            ),
-        ]),
-      ),
-    ].where((section) => section.fields.isNotEmpty).toList();
+    final maintenance = item.activityType == ServiceActivityType.maintenance;
 
     final sessions = [...item.progressEntries]
       ..sort((a, b) => a.occurredAt.compareTo(b.occurredAt));
+    DateTime? lastEnd;
+    for (final entry in sessions) {
+      final end = entry.endedAt;
+      if (end != null && (lastEnd == null || end.isAfter(lastEnd))) {
+        lastEnd = end;
+      }
+    }
+
+    final serial = equipment?.serialNumber.trim() ?? '';
+    final tag = details.assetTag.trim();
+
+    // O modelo foi desenhado para manutenção. Nas outras atividades, os
+    // nomes das casas vêm do formulário daquela atividade, para que um
+    // "Escopo da instalação" não saia rotulado como "Relato do cliente".
+    final narrative = [
+      ServiceOrderField(
+        maintenance ? 'Relato do cliente' : clean(copy.primaryFieldLabel),
+        _joinLines([
+          item.reportedFailure,
+          _joinText([
+            if (item.errorCode?.trim().isNotEmpty ?? false)
+              '${clean(copy.referenceLabel)}: ${item.errorCode!.trim()}',
+            item.errorMessage,
+          ], ' — '),
+        ]),
+      ),
+      ServiceOrderField(
+        maintenance ? 'Causa identificada' : clean(copy.deviationLabel),
+        item.rootCause?.trim() ?? '',
+      ),
+      ServiceOrderField(
+        maintenance ? 'Procedimento executado' : clean(copy.solutionLabel),
+        item.solutionDetails?.trim() ?? '',
+      ),
+    ];
 
     return ServiceOrder(
       caseNumber: item.caseNumber,
-      organizationName: organizationName,
-      issuerName: issuerName,
       issuedAt: issuedAt,
-      activityLabel: ServiceActivityType.label(item.activityType),
-      statusLabel: labelForStatus(item.status),
+      issuer: issuer,
+      customer: _first([customer?.name, equipment?.customer]),
+      address: _joinText([
+        customer?.addressLine,
+        _first([customer?.locationLabel, site?.locationLabel]),
+      ], ' — '),
+      sector: details.sector.trim(),
+      requester: details.requester.trim(),
+      equipment: _first([equipment?.modality, equipment?.family]),
+      serialAndTag: _joinText([serial, tag], ' / '),
+      manufacturerModel: equipment == null
+          ? item.equipmentLabel
+          : _joinText([equipment.manufacturer, equipment.model], ' / '),
       openedAt: item.openedAt,
-      closedAt: item.closedAt,
-      customerFields: customerFields,
-      equipmentFields: equipmentFields,
-      sections: sections,
-      sessions: [
-        for (final entry in sessions)
-          ServiceOrderSession(
-            start: entry.occurredAt,
-            end: entry.endedAt,
-            description: entry.description.trim(),
-          ),
-      ],
-      serviceMinutes: ServiceTimeMetrics.serviceMinutes(item.progressEntries),
+      startedAt: sessions.isEmpty ? null : sessions.first.occurredAt,
+      finishedAt: item.closedAt ?? lastEnd,
       downtimeMinutes: item.downtimeMinutes,
+      narrative: narrative,
+      materials: [
+        for (final material in details.materials)
+          if (!material.isEmpty) material,
+      ],
+      checks: details.checks,
+      testNotes: [
+        for (final (label, value) in [
+          (clean(copy.measurementsLabel), item.measurements),
+          (clean(copy.validationLabel), item.validationResult),
+        ])
+          if (value?.trim().isNotEmpty ?? false)
+            ServiceOrderField(label, value!.trim()),
+      ],
+      situation: details.situation,
+      recommendations: details.recommendations.trim(),
     );
   }
 
-  static String labelForStatus(String value) => switch (value) {
-    'open' => 'Aberto',
-    'diagnosing' => 'Em andamento',
-    'waiting_parts' => 'Aguardando peça / material',
-    'waiting_customer' => 'Aguardando cliente / local',
-    'resolved' => 'Concluído',
-    'cancelled' => 'Cancelado',
-    _ => value,
-  };
-
-  static String? labelForImpact(String value) => switch (value) {
-    'none' => 'Sem impacto',
-    'degraded' => 'Operação degradada',
-    'partial_stop' => 'Parada parcial',
-    'total_stop' => 'Parada total',
-    _ => null,
-  };
-
-  static String? labelForFinalCondition(String? value) => switch (value) {
-    'operational' => 'Operacional',
-    'degraded' => 'Degradado',
-    'stopped' => 'Parado',
-    'decommissioned' => 'Desativado / removido',
-    _ => null,
-  };
-
-  /// "3h 05min", como no formulário, mas com os minutos em dois dígitos
-  /// para as colunas da tabela de sessões alinharem.
+  /// "3h 05min". Minutos em dois dígitos para as horas lerem bem.
   static String formatMinutes(int minutes) {
     if (minutes <= 0) return '0 min';
     final hours = minutes ~/ 60;
     final remainder = minutes % 60;
     if (hours == 0) return '$minutes min';
     return '${hours}h ${remainder.toString().padLeft(2, '0')}min';
+  }
+
+  static const _months = [
+    'janeiro',
+    'fevereiro',
+    'março',
+    'abril',
+    'maio',
+    'junho',
+    'julho',
+    'agosto',
+    'setembro',
+    'outubro',
+    'novembro',
+    'dezembro',
+  ];
+
+  /// "Curitiba/PR, 24 de setembro de 2026." — o local e a data acima das
+  /// assinaturas. Escrito à mão para não depender dos dados de idioma do
+  /// intl, que precisariam ser carregados antes.
+  String get placeAndDate {
+    final d = issuedAt;
+    final date = '${d.day} de ${_months[d.month - 1]} de ${d.year}';
+    final city = issuer.city.trim();
+    return city.isEmpty ? '$date.' : '$city, $date.';
   }
 
   /// Nome do arquivo, sem pasta. A data e a hora da emissão entram no
@@ -241,22 +224,21 @@ class ServiceOrder {
 
   /// Os rótulos do formulário avisam que o campo é opcional; na OS,
   /// preenchida, o aviso não faz sentido.
-  static String cleanLabel(String label) =>
+  static String clean(String label) =>
       label.replaceAll(RegExp(r'\s*\(opcional\)\s*$'), '');
 
-  static String? _text(String? value) {
-    final trimmed = value?.trim();
-    return trimmed == null || trimmed.isEmpty ? null : trimmed;
+  static String _first(List<String?> values) {
+    for (final value in values) {
+      final trimmed = value?.trim() ?? '';
+      if (trimmed.isNotEmpty) return trimmed;
+    }
+    return '';
   }
 
-  static List<ServiceOrderField> _present(List<(String, String?)> pairs) => [
-    for (final (label, value) in pairs)
-      if (_text(value) case final text?)
-        ServiceOrderField(cleanLabel(label), text),
-  ];
+  static String _joinText(List<String?> parts, String separator) => parts
+      .map((part) => part?.trim() ?? '')
+      .where((part) => part.isNotEmpty)
+      .join(separator);
 
-  static String? _joined(List<String?> parts, String separator) {
-    final present = parts.map(_text).whereType<String>().toList();
-    return present.isEmpty ? null : present.join(separator);
-  }
+  static String _joinLines(List<String?> parts) => _joinText(parts, '\n');
 }
