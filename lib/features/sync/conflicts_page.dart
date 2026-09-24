@@ -175,14 +175,16 @@ class _Aviso extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: OrionColors.warning.withValues(alpha: 0.10),
+        color: context.orion.warning.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: OrionColors.warning.withValues(alpha: 0.35)),
+        border: Border.all(
+          color: context.orion.warning.withValues(alpha: 0.35),
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.sync_problem_rounded, color: OrionColors.warning),
+          Icon(Icons.sync_problem_rounded, color: context.orion.warning),
           const SizedBox(width: 12),
           Expanded(
             child: Text(

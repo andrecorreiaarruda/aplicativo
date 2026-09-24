@@ -10,6 +10,7 @@ import 'core/config/app_config.dart';
 import 'core/runtime/app_runtime.dart';
 import 'features/recovery/storage_gate.dart';
 import 'core/storage/sqlite_snapshot_store.dart';
+import 'core/theme/appearance_controller.dart';
 import 'core/theme/orion_theme.dart';
 
 Future<void> main() async {
@@ -53,7 +54,10 @@ Future<void> main() async {
 Future<AppRuntime> _createRuntime() async {
   try {
     final store = await SqliteSnapshotStore.open();
-    return AppRuntime(localStore: store);
+    return AppRuntime(
+      localStore: store,
+      appearance: await AppearanceController.load(store),
+    );
   } catch (error, stack) {
     debugPrint('ORION LOCAL DATABASE ERROR: $error');
     debugPrintStack(stackTrace: stack);

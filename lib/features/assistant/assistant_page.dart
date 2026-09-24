@@ -160,12 +160,12 @@ class _AssistantPageState extends State<AssistantPage> {
                 const SizedBox(height: 16),
                 LayoutBuilder(
                   builder: (context, constraints) {
-                    final warning = const Row(
+                    final warning = Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Icon(
                           Icons.info_outline_rounded,
-                          color: OrionColors.blue,
+                          color: context.orion.accent,
                           size: 20,
                         ),
                         SizedBox(width: 8),
@@ -173,7 +173,7 @@ class _AssistantPageState extends State<AssistantPage> {
                           child: Text(
                             'As sugestões são evidências históricas, não procedimento oficial do fabricante nem diagnóstico autônomo.',
                             style: TextStyle(
-                              color: OrionColors.muted,
+                              color: context.orion.textMuted,
                               height: 1.35,
                             ),
                           ),
@@ -279,8 +279,8 @@ class _ResultCard extends StatelessWidget {
                       children: [
                         Text(
                           'Caso #${item.caseNumber}',
-                          style: const TextStyle(
-                            color: OrionColors.blue,
+                          style: TextStyle(
+                            color: context.orion.accent,
                             fontWeight: FontWeight.w900,
                           ),
                         ),
@@ -305,13 +305,13 @@ class _ResultCard extends StatelessWidget {
                     vertical: 9,
                   ),
                   decoration: BoxDecoration(
-                    color: OrionColors.paleCyan,
+                    color: context.orion.accentSoft,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
                     '$percentage% similar',
-                    style: const TextStyle(
-                      color: OrionColors.navy,
+                    style: TextStyle(
+                      color: context.orion.emphasis,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
@@ -337,23 +337,23 @@ class _ResultCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: OrionColors.paleCyan,
+                  color: context.orion.accentSoft,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.auto_awesome_rounded,
                       size: 18,
-                      color: OrionColors.navy,
+                      color: context.orion.emphasis,
                     ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         result.explanation!,
-                        style: const TextStyle(
-                          color: OrionColors.navy,
+                        style: TextStyle(
+                          color: context.orion.emphasis,
                           fontStyle: FontStyle.italic,
                           height: 1.4,
                         ),
@@ -408,7 +408,7 @@ class _EvidenceBlock extends StatelessWidget {
         children: [
           Text(
             label,
-            style: const TextStyle(color: OrionColors.muted, fontSize: 12),
+            style: TextStyle(color: context.orion.textMuted, fontSize: 12),
           ),
           const SizedBox(height: 3),
           Text(text, style: const TextStyle(height: 1.42)),
@@ -427,9 +427,9 @@ class _Tag extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
-        color: OrionColors.canvas,
+        color: context.orion.panel,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: OrionColors.border),
+        border: Border.all(color: context.orion.border),
       ),
       child: Text(
         label,

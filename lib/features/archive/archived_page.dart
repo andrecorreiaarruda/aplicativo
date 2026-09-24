@@ -218,7 +218,7 @@ class _Grupo extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Icon(icone, size: 20, color: OrionColors.blue),
+                  Icon(icone, size: 20, color: context.orion.accent),
                   const SizedBox(width: 8),
                   Text(
                     '$titulo (${itens.length})',
@@ -264,7 +264,7 @@ class _LinhaArquivada extends StatelessWidget {
             'Arquivado em ${quando.day.toString().padLeft(2, '0')}/'
                 '${quando.month.toString().padLeft(2, '0')}/${quando.year}',
         ].join(' · '),
-        style: const TextStyle(color: OrionColors.muted),
+        style: TextStyle(color: context.orion.textMuted),
       ),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
@@ -278,9 +278,9 @@ class _LinhaArquivada extends StatelessWidget {
           IconButton(
             tooltip: 'Excluir para sempre',
             onPressed: onExcluir,
-            icon: const Icon(
+            icon: Icon(
               Icons.delete_forever_rounded,
-              color: OrionColors.danger,
+              color: context.orion.danger,
             ),
           ),
         ],

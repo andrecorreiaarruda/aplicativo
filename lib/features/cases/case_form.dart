@@ -691,7 +691,7 @@ class _ExecutionStep extends StatelessWidget {
         const SizedBox(height: 6),
         Text(
           copy.progressEntryHint,
-          style: const TextStyle(fontSize: 12, color: OrionColors.muted),
+          style: TextStyle(fontSize: 12, color: context.orion.textMuted),
         ),
         const SizedBox(height: 12),
         if (openEntry != null) ...[
@@ -721,7 +721,7 @@ class _ExecutionStep extends StatelessWidget {
                     entry.isOpen
                         ? Icons.hourglass_top_rounded
                         : Icons.event_note_outlined,
-                    color: entry.isOpen ? OrionColors.blue : null,
+                    color: entry.isOpen ? context.orion.accent : null,
                   ),
                   title: Text(
                     entry.isOpen
@@ -776,13 +776,13 @@ class _OpenSessionBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: OrionColors.paleCyan,
+        color: context.orion.accentSoft,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.hourglass_top_rounded, color: OrionColors.blue),
+          Icon(Icons.hourglass_top_rounded, color: context.orion.accent),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -797,9 +797,9 @@ class _OpenSessionBanner extends StatelessWidget {
                   'Iniciada em ${timeFormat.format(entry.occurredAt)}, sem '
                   'horário de fim. O atendimento não pode ser concluído '
                   'enquanto ela estiver assim.',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
-                    color: OrionColors.muted,
+                    color: context.orion.textMuted,
                   ),
                 ),
               ],
@@ -1115,7 +1115,7 @@ class _ComputedTimeSummary extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: OrionColors.paleCyan,
+        color: context.orion.accentSoft,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -1123,7 +1123,7 @@ class _ComputedTimeSummary extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.timer_outlined, color: OrionColors.blue),
+              Icon(Icons.timer_outlined, color: context.orion.accent),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
@@ -1138,12 +1138,12 @@ class _ComputedTimeSummary extends StatelessWidget {
             closedSessions == 0
                 ? 'Nenhuma sessão de trabalho registrada no diário — o tempo técnico ficará zerado.'
                 : 'Somado de $closedSessions ${closedSessions == 1 ? 'sessão encerrada' : 'sessões encerradas'} no diário.',
-            style: const TextStyle(fontSize: 12, color: OrionColors.muted),
+            style: TextStyle(fontSize: 12, color: context.orion.textMuted),
           ),
           const SizedBox(height: 6),
           Text(
             'A indisponibilidade do equipamento é calculada no servidor, a partir do impacto operacional, e aparece após a sincronização.',
-            style: const TextStyle(fontSize: 12, color: OrionColors.muted),
+            style: TextStyle(fontSize: 12, color: context.orion.textMuted),
           ),
         ],
       ),
@@ -1395,7 +1395,7 @@ class _DateTimeField extends StatelessWidget {
               child: Text(
                 texto,
                 style: TextStyle(
-                  color: value == null ? OrionColors.muted : null,
+                  color: value == null ? context.orion.textMuted : null,
                 ),
               ),
             ),

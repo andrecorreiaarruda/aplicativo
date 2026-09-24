@@ -142,12 +142,12 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: OrionColors.danger.withValues(alpha: 0.08),
+                        color: context.orion.danger.withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(
                         _error!,
-                        style: const TextStyle(color: OrionColors.danger),
+                        style: TextStyle(color: context.orion.danger),
                       ),
                     ),
                   ],

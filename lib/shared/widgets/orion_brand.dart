@@ -18,7 +18,7 @@ class OrionBrand extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textColor = onDark ? Colors.white : OrionColors.navy;
+    final textColor = onDark ? Colors.white : context.orion.emphasis;
     final showDetails = !compact && showProductDetails;
 
     final content = Row(
@@ -35,14 +35,14 @@ class OrionBrand extends StatelessWidget {
             fit: BoxFit.contain,
             errorBuilder: (_, __, ___) => Icon(
               Icons.lightbulb_outline_rounded,
-              color: onDark ? OrionColors.cyan : OrionColors.blue,
+              color: onDark ? context.orion.accentBright : context.orion.accent,
               size: height,
             ),
           ),
         ),
         if (showDetails) ...[
           const SizedBox(width: 10),
-          Container(width: 1, height: height * .7, color: OrionColors.border),
+          Container(width: 1, height: height * .7, color: context.orion.border),
           const SizedBox(width: 10),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -62,7 +62,9 @@ class OrionBrand extends StatelessWidget {
                 'Engenharia clínica',
                 maxLines: 1,
                 style: TextStyle(
-                  color: onDark ? const Color(0xFFB9C8E8) : OrionColors.muted,
+                  color: onDark
+                      ? const Color(0xFFB9C8E8)
+                      : context.orion.textMuted,
                   fontSize: 10.5,
                   height: 1.2,
                 ),

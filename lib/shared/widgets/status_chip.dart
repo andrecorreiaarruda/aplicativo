@@ -10,7 +10,11 @@ class StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final metadata = _metadata(value);
+    final metadata = _metadata(
+      value,
+      context.orion,
+      Theme.of(context).brightness == Brightness.dark,
+    );
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: compact ? 8 : 10,
@@ -34,40 +38,48 @@ class StatusChip extends StatelessWidget {
     );
   }
 
-  static _StatusMetadata _metadata(String value) {
+  static _StatusMetadata _metadata(String value, OrionPalette p, bool escuro) {
     switch (value) {
       case 'operational':
-        return const _StatusMetadata('Operacional', OrionColors.success);
+        return _StatusMetadata('Operacional', p.success);
       case 'degraded':
-        return const _StatusMetadata('Degradado', OrionColors.warning);
+        return _StatusMetadata('Degradado', p.warning);
       case 'stopped':
-        return const _StatusMetadata('Parado', OrionColors.danger);
+        return _StatusMetadata('Parado', p.danger);
       case 'decommissioned':
-        return const _StatusMetadata('Desativado', OrionColors.muted);
+        return _StatusMetadata('Desativado', p.textMuted);
       case 'open':
-        return const _StatusMetadata('Aberto', OrionColors.blue);
+        return _StatusMetadata('Aberto', p.accent);
       case 'diagnosing':
-        return const _StatusMetadata('Em andamento', OrionColors.warning);
+        return _StatusMetadata('Em andamento', p.warning);
       case 'waiting_parts':
-        return const _StatusMetadata('Aguardando peça', Color(0xFF8C4A00));
+        // Laranja queimado e violeta ficam fora da paleta de propósito: são
+        // os dois estados de espera, e precisam se distinguir dos alertas.
+        return _StatusMetadata(
+          'Aguardando peça',
+          escuro ? const Color(0xFFE8A35E) : const Color(0xFF8C4A00),
+        );
       case 'waiting_customer':
-        return const _StatusMetadata('Aguardando cliente', Color(0xFF6B4EFF));
+        return _StatusMetadata(
+          'Aguardando cliente',
+          escuro ? const Color(0xFFA897FF) : const Color(0xFF6B4EFF),
+        );
       case 'resolved':
-        return const _StatusMetadata('Concluído', OrionColors.success);
+        return _StatusMetadata('Concluído', p.success);
       case 'cancelled':
-        return const _StatusMetadata('Cancelado', OrionColors.muted);
+        return _StatusMetadata('Cancelado', p.textMuted);
       case 'reviewed':
-        return const _StatusMetadata('Revisada', OrionColors.navy);
+        return _StatusMetadata('Revisada', p.emphasis);
       case 'recurring':
-        return const _StatusMetadata('Recorrente', OrionColors.blue);
+        return _StatusMetadata('Recorrente', p.accent);
       case 'confirmed':
-        return const _StatusMetadata('Confirmada', OrionColors.success);
+        return _StatusMetadata('Confirmada', p.success);
       case 'probable':
-        return const _StatusMetadata('Provável', OrionColors.warning);
+        return _StatusMetadata('Provável', p.warning);
       case 'obsolete':
-        return const _StatusMetadata('Obsoleta', OrionColors.danger);
+        return _StatusMetadata('Obsoleta', p.danger);
       default:
-        return const _StatusMetadata('Não confirmada', OrionColors.muted);
+        return _StatusMetadata('Não confirmada', p.textMuted);
     }
   }
 }

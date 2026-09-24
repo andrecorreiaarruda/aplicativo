@@ -29,11 +29,11 @@ class EmptyState extends StatelessWidget {
               Container(
                 width: 70,
                 height: 70,
-                decoration: const BoxDecoration(
-                  color: OrionColors.paleCyan,
+                decoration: BoxDecoration(
+                  color: context.orion.accentSoft,
                   shape: BoxShape.circle,
                 ),
-                child: Icon(icon, color: OrionColors.blue, size: 34),
+                child: Icon(icon, color: context.orion.accent, size: 34),
               ),
               const SizedBox(height: 18),
               Text(

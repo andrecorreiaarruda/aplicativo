@@ -131,7 +131,7 @@ class _LoginScreenState extends State<LoginScreen> {
               Expanded(
                 flex: 5,
                 child: Container(
-                  color: OrionColors.deepNavy,
+                  color: context.orion.brandDeep,
                   padding: const EdgeInsets.all(56),
                   child: const _BrandPanel(),
                 ),
@@ -222,7 +222,7 @@ class _FeatureTag extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: OrionColors.cyan, size: 18),
+          Icon(icon, color: context.orion.accentBright, size: 18),
           const SizedBox(width: 8),
           Text(label, style: const TextStyle(color: Colors.white)),
         ],
@@ -344,7 +344,7 @@ class _LoginForm extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: OrionColors.paleCyan,
+                color: context.orion.accentSoft,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(message!),

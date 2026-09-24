@@ -230,9 +230,11 @@ class _ServiceOrderFoundationCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: OrionColors.paleCyan,
+        color: context.orion.accentSoft,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: OrionColors.cyan.withValues(alpha: 0.32)),
+        border: Border.all(
+          color: context.orion.accentBright.withValues(alpha: 0.32),
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -241,12 +243,12 @@ class _ServiceOrderFoundationCard extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: context.orion.surface,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(
+            child: Icon(
               Icons.description_outlined,
-              color: OrionColors.blue,
+              color: context.orion.accent,
             ),
           ),
           const SizedBox(width: 14),
@@ -263,7 +265,7 @@ class _ServiceOrderFoundationCard extends StatelessWidget {
                       'Base para preenchimento automático da OS',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
-                        color: OrionColors.navy,
+                        color: context.orion.emphasis,
                       ),
                     ),
                     const Chip(label: Text('Próxima etapa')),
@@ -273,8 +275,8 @@ class _ServiceOrderFoundationCard extends StatelessWidget {
                 Text(
                   'Os dados opcionais de contato e endereço já ficam organizados por cliente. '
                   'Na etapa de ordens de serviço, cada cliente poderá ter um modelo salvo e o atendimento concluído fornecerá falha, diagnóstico, solução, tempos e validação para preenchimento automático.',
-                  style: const TextStyle(
-                    color: OrionColors.muted,
+                  style: TextStyle(
+                    color: context.orion.textMuted,
                     height: 1.45,
                   ),
                 ),
@@ -283,8 +285,8 @@ class _ServiceOrderFoundationCard extends StatelessWidget {
                   customerCount == 1
                       ? '1 cliente disponível para essa futura integração.'
                       : '$customerCount clientes disponíveis para essa futura integração.',
-                  style: const TextStyle(
-                    color: OrionColors.navy,
+                  style: TextStyle(
+                    color: context.orion.emphasis,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -355,12 +357,12 @@ class _CustomerCard extends StatelessWidget {
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: OrionColors.paleCyan,
+                    color: context.orion.accentSoft,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.apartment_rounded,
-                    color: OrionColors.blue,
+                    color: context.orion.accent,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -376,7 +378,7 @@ class _CustomerCard extends StatelessWidget {
                         sites.length == 1
                             ? '$equipmentCount equipamento${equipmentCount == 1 ? '' : 's'} · 1 local'
                             : '$equipmentCount equipamento${equipmentCount == 1 ? '' : 's'} · ${sites.length} locais',
-                        style: const TextStyle(color: OrionColors.muted),
+                        style: TextStyle(color: context.orion.textMuted),
                       ),
                     ],
                   ),
@@ -402,14 +404,14 @@ class _CustomerCard extends StatelessWidget {
               'Locais de instalação',
               style: Theme.of(context).textTheme.labelLarge?.copyWith(
                 fontWeight: FontWeight.w800,
-                color: OrionColors.navy,
+                color: context.orion.emphasis,
               ),
             ),
             const SizedBox(height: 8),
             if (sites.isEmpty)
-              const Text(
+              Text(
                 'Nenhum local cadastrado.',
-                style: TextStyle(color: OrionColors.muted),
+                style: TextStyle(color: context.orion.textMuted),
               )
             else
               Wrap(
@@ -438,7 +440,7 @@ class _CustomerCard extends StatelessWidget {
                 customer.notes!,
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: OrionColors.muted, height: 1.4),
+                style: TextStyle(color: context.orion.textMuted, height: 1.4),
               ),
             ],
             const SizedBox(height: 10),
@@ -470,7 +472,7 @@ class _InfoLine extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 17, color: OrionColors.muted),
+          Icon(icon, size: 17, color: context.orion.textMuted),
           const SizedBox(width: 8),
           Expanded(child: Text(text, style: const TextStyle(fontSize: 13))),
         ],

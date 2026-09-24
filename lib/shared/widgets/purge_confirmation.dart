@@ -18,7 +18,7 @@ Future<bool> confirmPurge(
     builder: (context) => AlertDialog(
       title: Row(
         children: [
-          const Icon(Icons.delete_forever_rounded, color: OrionColors.danger),
+          Icon(Icons.delete_forever_rounded, color: context.orion.danger),
           const SizedBox(width: 10),
           Expanded(child: Text('Excluir $tipo para sempre?')),
         ],
@@ -34,7 +34,7 @@ Future<bool> confirmPurge(
           child: const Text('Cancelar'),
         ),
         FilledButton(
-          style: FilledButton.styleFrom(backgroundColor: OrionColors.danger),
+          style: FilledButton.styleFrom(backgroundColor: context.orion.danger),
           onPressed: () => Navigator.of(context).pop(true),
           child: const Text('Excluir para sempre'),
         ),

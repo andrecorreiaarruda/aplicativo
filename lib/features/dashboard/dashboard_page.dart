@@ -97,28 +97,28 @@ class _MetricGrid extends StatelessWidget {
         label: 'Equipamentos',
         value: '${snapshot.totalEquipment}',
         detail: '${snapshot.stoppedEquipment} parados',
-        accent: OrionColors.blue,
+        accent: context.orion.accent,
       ),
       _MetricData(
         icon: Icons.build_circle_outlined,
         label: 'Atendimentos ativos',
         value: '${snapshot.openCases}',
         detail: '${snapshot.resolvedCases} resolvidos',
-        accent: OrionColors.warning,
+        accent: context.orion.warning,
       ),
       _MetricData(
         icon: Icons.timer_outlined,
         label: 'Tempo médio técnico',
         value: _duration(snapshot.averageServiceMinutes.round()),
         detail: 'Casos resolvidos',
-        accent: OrionColors.navy,
+        accent: context.orion.emphasis,
       ),
       _MetricData(
         icon: Icons.power_settings_new_rounded,
         label: 'Indisponibilidade',
         value: _duration(snapshot.totalDowntimeMinutes),
         detail: _coverage(snapshot, 'Acumulada nos casos apurados'),
-        accent: OrionColors.danger,
+        accent: context.orion.danger,
       ),
       _MetricData(
         icon: Icons.balance_rounded,
@@ -127,7 +127,7 @@ class _MetricGrid extends StatelessWidget {
         detail: snapshot.downtimeToServiceRatio == null
             ? 'Base ainda insuficiente'
             : _coverage(snapshot, 'Indisponível ÷ tempo técnico'),
-        accent: OrionColors.warning,
+        accent: context.orion.warning,
       ),
     ];
 
@@ -223,7 +223,7 @@ class _MetricCard extends StatelessWidget {
                 children: [
                   Text(
                     data.label,
-                    style: const TextStyle(color: OrionColors.muted),
+                    style: TextStyle(color: context.orion.textMuted),
                   ),
                   const SizedBox(height: 3),
                   Text(
@@ -234,9 +234,9 @@ class _MetricCard extends StatelessWidget {
                   ),
                   Text(
                     data.detail,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(color: OrionColors.muted),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: context.orion.textMuted,
+                    ),
                   ),
                 ],
               ),
@@ -306,8 +306,8 @@ class _RecentCaseRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           CircleAvatar(
-            backgroundColor: OrionColors.paleCyan,
-            foregroundColor: OrionColors.blue,
+            backgroundColor: context.orion.accentSoft,
+            foregroundColor: context.orion.accent,
             child: Text('#${item.caseNumber}'),
           ),
           const SizedBox(width: 12),
@@ -326,8 +326,8 @@ class _RecentCaseRow extends StatelessWidget {
                   '${item.equipmentLabel} · $date',
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: OrionColors.muted,
+                  style: TextStyle(
+                    color: context.orion.textMuted,
                     fontSize: 12,
                   ),
                 ),
@@ -374,13 +374,16 @@ class _OperationalPanel extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: OrionColors.paleCyan,
+                color: context.orion.accentSoft,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Row(
+              child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.verified_user_outlined, color: OrionColors.blue),
+                  Icon(
+                    Icons.verified_user_outlined,
+                    color: context.orion.accent,
+                  ),
                   SizedBox(width: 10),
                   Expanded(
                     child: Text(

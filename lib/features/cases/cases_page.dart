@@ -260,8 +260,8 @@ class _CaseCard extends StatelessWidget {
                     children: [
                       Text(
                         '#${item.caseNumber}',
-                        style: const TextStyle(
-                          color: OrionColors.blue,
+                        style: TextStyle(
+                          color: context.orion.accent,
                           fontWeight: FontWeight.w900,
                         ),
                       ),
@@ -289,7 +289,7 @@ class _CaseCard extends StatelessWidget {
                   const SizedBox(height: 6),
                   Text(
                     '${item.equipmentLabel} · $date',
-                    style: const TextStyle(color: OrionColors.muted),
+                    style: TextStyle(color: context.orion.textMuted),
                   ),
                   if (latest != null) ...[
                     const SizedBox(height: 12),
@@ -297,9 +297,9 @@ class _CaseCard extends StatelessWidget {
                       width: double.infinity,
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: OrionColors.canvas,
+                        color: context.orion.panel,
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: OrionColors.border),
+                        border: Border.all(color: context.orion.border),
                       ),
                       child: Text(
                         'Último andamento (${DateFormat('dd/MM HH:mm').format(latest.occurredAt)}): ${latest.description}',
@@ -324,7 +324,7 @@ class _CaseCard extends StatelessWidget {
                       width: double.infinity,
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF4FBF7),
+                        color: context.orion.success.withValues(alpha: .08),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(
@@ -351,16 +351,16 @@ class _CaseCard extends StatelessWidget {
                         const SizedBox(height: 10),
                         Text(
                           '${item.progressEntries.length} registros',
-                          style: const TextStyle(
-                            color: OrionColors.muted,
+                          style: TextStyle(
+                            color: context.orion.textMuted,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
                       ],
                       const SizedBox(height: 16),
-                      const Icon(
+                      Icon(
                         Icons.chevron_right_rounded,
-                        color: OrionColors.muted,
+                        color: context.orion.textMuted,
                       ),
                     ],
                   ),
@@ -388,18 +388,18 @@ class _ActivityTag extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: OrionColors.paleCyan,
+        color: context.orion.accentSoft,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: OrionColors.navy),
+          Icon(icon, size: 14, color: context.orion.emphasis),
           const SizedBox(width: 5),
           Text(
             ServiceActivityType.label(value),
-            style: const TextStyle(
-              color: OrionColors.navy,
+            style: TextStyle(
+              color: context.orion.emphasis,
               fontSize: 11.5,
               fontWeight: FontWeight.w800,
             ),
@@ -419,9 +419,9 @@ class _TechnicalTag extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: OrionColors.canvas,
+        color: context.orion.panel,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: OrionColors.border),
+        border: Border.all(color: context.orion.border),
       ),
       child: Text(
         label,

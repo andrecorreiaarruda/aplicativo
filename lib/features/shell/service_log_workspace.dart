@@ -12,6 +12,8 @@ import '../customers/customers_page.dart';
 import '../dashboard/dashboard_page.dart';
 import '../equipment/equipment_page.dart';
 import '../sync/conflicts_page.dart';
+import '../../core/theme/appearance_controller.dart';
+import 'appearance_dialog.dart';
 import 'service_log_controller.dart';
 
 class WorkspaceProfile {
@@ -219,14 +221,14 @@ class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace>
                 const SizedBox(height: 10),
                 Text(
                   'Último erro: ${_controller.syncStatus!.lastError}',
-                  style: const TextStyle(color: OrionColors.danger),
+                  style: TextStyle(color: context.orion.danger),
                 ),
               ],
               if (widget.startupWarning != null) ...[
                 const SizedBox(height: 14),
                 Text(
                   widget.startupWarning!,
-                  style: const TextStyle(color: OrionColors.danger),
+                  style: TextStyle(color: context.orion.danger),
                 ),
               ],
             ],
@@ -310,13 +312,13 @@ class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace>
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
-                        color: OrionColors.paleCyan,
+                        color: context.orion.accentSoft,
                         borderRadius: BorderRadius.circular(99),
                       ),
-                      child: const Text(
+                      child: Text(
                         'DEMO LOCAL',
                         style: TextStyle(
-                          color: OrionColors.navy,
+                          color: context.orion.emphasis,
                           fontWeight: FontWeight.w800,
                           fontSize: 11,
                         ),
@@ -329,7 +331,7 @@ class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace>
                             ? Icons.sync_problem_rounded
                             : Icons.storage_rounded,
                         size: 18,
-                        color: _hasConflicts ? OrionColors.warning : null,
+                        color: _hasConflicts ? context.orion.warning : null,
                       ),
                       label: Text(_storageStatusLabel()),
                       // Com conflito, o atalho leva direto a onde se
@@ -351,7 +353,7 @@ class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace>
                         _hasConflicts
                             ? Icons.sync_problem_rounded
                             : Icons.storage_rounded,
-                        color: _hasConflicts ? OrionColors.warning : null,
+                        color: _hasConflicts ? context.orion.warning : null,
                       ),
                     ),
                   IconButton(
@@ -372,6 +374,7 @@ class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace>
                   PopupMenuButton<String>(
                     tooltip: 'Conta',
                     onSelected: (value) {
+                      if (value == 'appearance') showAppearanceDialog(context);
                       if (value == 'logout') _controller.signOut();
                     },
                     itemBuilder: (context) => [
@@ -396,6 +399,20 @@ class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace>
                           ),
                         ),
                       ),
+                      PopupMenuItem(
+                        value: 'appearance',
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.contrast_rounded),
+                          title: const Text('Aparência'),
+                          subtitle: Text(
+                            appearanceLabel(
+                              AppearanceScope.maybeOf(context)?.mode ??
+                                  ThemeMode.system,
+                            ),
+                          ),
+                        ),
+                      ),
                       if (!widget.demoMode)
                         const PopupMenuItem(
                           value: 'logout',
@@ -408,8 +425,8 @@ class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace>
                     ],
                     icon: CircleAvatar(
                       radius: 17,
-                      backgroundColor: OrionColors.navy,
-                      foregroundColor: Colors.white,
+                      backgroundColor: context.orion.emphasis,
+                      foregroundColor: context.orion.onEmphasis,
                       child: Text(_initials(widget.profile.fullName)),
                     ),
                   ),
@@ -534,13 +551,15 @@ class _WorkspaceContent extends StatelessWidget {
             margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFF6E5),
+              color: context.orion.warning.withValues(alpha: .12),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFE9A23B)),
+              border: Border.all(
+                color: context.orion.warning.withValues(alpha: .55),
+              ),
             ),
             child: Row(
               children: [
-                const Icon(Icons.warning_amber_rounded),
+                Icon(Icons.warning_amber_rounded, color: context.orion.warning),
                 const SizedBox(width: 10),
                 Expanded(child: Text(startupWarning!)),
               ],
@@ -552,16 +571,13 @@ class _WorkspaceContent extends StatelessWidget {
             margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFEDEA),
+              color: context.orion.danger.withValues(alpha: .12),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: OrionColors.danger),
+              border: Border.all(color: context.orion.danger),
             ),
             child: Row(
               children: [
-                const Icon(
-                  Icons.error_outline_rounded,
-                  color: OrionColors.danger,
-                ),
+                Icon(Icons.error_outline_rounded, color: context.orion.danger),
                 const SizedBox(width: 10),
                 Expanded(child: Text(controller.errorMessage!)),
                 IconButton(

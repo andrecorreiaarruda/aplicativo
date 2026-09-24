@@ -220,12 +220,12 @@ class _EquipmentCard extends StatelessWidget {
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: OrionColors.paleCyan,
+                    color: context.orion.accentSoft,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.precision_manufacturing_rounded,
-                    color: OrionColors.blue,
+                    color: context.orion.accent,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -239,7 +239,7 @@ class _EquipmentCard extends StatelessWidget {
                       ),
                       Text(
                         item.modality,
-                        style: const TextStyle(color: OrionColors.muted),
+                        style: TextStyle(color: context.orion.textMuted),
                       ),
                     ],
                   ),
@@ -281,7 +281,7 @@ class _EquipmentCard extends StatelessWidget {
                 item.notes!,
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: OrionColors.muted, height: 1.4),
+                style: TextStyle(color: context.orion.textMuted, height: 1.4),
               ),
             ],
           ],
@@ -303,7 +303,7 @@ class _InfoLine extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 17, color: OrionColors.muted),
+          Icon(icon, size: 17, color: context.orion.textMuted),
           const SizedBox(width: 8),
           Expanded(child: Text(text, style: const TextStyle(fontSize: 13))),
         ],
