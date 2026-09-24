@@ -28,3 +28,14 @@ enabled = false
 
 [edge_runtime]
 enabled = false
+
+# Recuperação de senha por código. O aplicativo de desktop não tem como
+# receber o link do modelo de fábrica, então o e-mail leva o código de uso
+# único ({{ .Token }}) para ser digitado na tela de recuperação.
+#
+# Este arquivo vale só para o Supabase local. Em produção, o mesmo texto
+# precisa ser colado no painel: Authentication → Emails → Templates →
+# Reset Password.
+[auth.email.template.recovery]
+subject = "Código de recuperação de senha — ORION ServiceLog"
+content_path = "./supabase/templates/recovery.html"

@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/theme/orion_theme.dart';
 import '../../shared/widgets/orion_brand.dart';
+import 'password_recovery_screen.dart';
 
 /// Mensagem a exibir depois de um cadastro que não abriu sessão.
 ///
@@ -79,6 +80,16 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  void _openRecovery() {
+    // Leva o e-mail já digitado: quem esqueceu a senha quase sempre acabou
+    // de tentar entrar com ele.
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PasswordRecoveryScreen(initialEmail: _email.text),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -99,6 +110,7 @@ class _LoginScreenState extends State<LoginScreen> {
             }),
             onToggleObscure: () => setState(() => _obscure = !_obscure),
             onSubmit: _submit,
+            onForgotPassword: _openRecovery,
           );
           if (!wide) {
             return SafeArea(
@@ -229,6 +241,7 @@ class _LoginForm extends StatelessWidget {
     required this.onModeChanged,
     required this.onToggleObscure,
     required this.onSubmit,
+    required this.onForgotPassword,
     this.message,
   });
 
@@ -242,6 +255,7 @@ class _LoginForm extends StatelessWidget {
   final ValueChanged<bool> onModeChanged;
   final VoidCallback onToggleObscure;
   final VoidCallback onSubmit;
+  final VoidCallback onForgotPassword;
 
   @override
   Widget build(BuildContext context) {
@@ -346,6 +360,13 @@ class _LoginForm extends StatelessWidget {
                   ),
             label: Text(createAccount ? 'Criar conta' : 'Entrar'),
           ),
+          if (!createAccount) ...[
+            const SizedBox(height: 10),
+            TextButton(
+              onPressed: loading ? null : onForgotPassword,
+              child: const Text('Esqueci minha senha'),
+            ),
+          ],
         ],
       ),
     );

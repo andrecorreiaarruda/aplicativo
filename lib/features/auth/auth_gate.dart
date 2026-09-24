@@ -9,6 +9,7 @@ import '../../data/repositories/offline_first_service_log_repository.dart';
 import '../../data/repositories/service_log_repository.dart';
 import '../shell/service_log_workspace.dart';
 import 'login_screen.dart';
+import 'new_password_screen.dart';
 import 'organization_setup_screen.dart';
 
 class AuthGate extends StatefulWidget {
@@ -27,6 +28,15 @@ class _AuthGateState extends State<AuthGate> {
   String? _repositoryKey;
   ServiceLogRepository? _repository;
 
+  /// Sessão aberta por código de recuperação, ainda sem senha nova.
+  ///
+  /// Fica só em memória. Se o aplicativo for fechado neste meio-tempo, a
+  /// sessão continua válida e a pessoa entra direto na próxima abertura,
+  /// sem ter trocado a senha — o que não abre brecha nenhuma, porque ela
+  /// já provou ter acesso ao e-mail. Só precisará recuperar de novo na
+  /// próxima vez que o login for pedido.
+  bool _recovering = false;
+
   @override
   void initState() {
     super.initState();
@@ -36,6 +46,11 @@ class _AuthGateState extends State<AuthGate> {
     _subscription = client.auth.onAuthStateChange.listen((state) {
       if (!mounted) return;
       setState(() {
+        if (state.event == AuthChangeEvent.passwordRecovery) {
+          _recovering = true;
+        } else if (state.event == AuthChangeEvent.signedOut) {
+          _recovering = false;
+        }
         _session = state.session;
         _profileFuture = _session == null ? null : _fetchProfile();
         if (_session == null) {
@@ -111,6 +126,11 @@ class _AuthGateState extends State<AuthGate> {
   @override
   Widget build(BuildContext context) {
     if (_session == null) return const LoginScreen();
+    if (_recovering) {
+      return NewPasswordScreen(
+        onCompleted: () => setState(() => _recovering = false),
+      );
+    }
 
     final profileFuture = _profileFuture ??= _fetchProfile();
     return FutureBuilder<_WorkspaceSession?>(
