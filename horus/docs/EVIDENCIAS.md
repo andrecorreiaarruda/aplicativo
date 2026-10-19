@@ -328,9 +328,12 @@ O Horus refaz cada peça com o pynetdicom, num pacote próprio (`net/`):
   `retrieveMode` 0 = C-MOVE, 1 = C-GET, 2 = WADO
   ([`DCMNetServiceDelegate.h:40–42`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/DCM%20Framework/DCMNetServiceDelegate.h#L40-L42)). O C-MOVE espera as
   respostas sem prazo (`DIMSE_BLOCKING`,
-  [`DCMTKServiceClassUser.mm:76`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/DCMTKServiceClassUser.mm#L76)). O Horus também espera sem prazo,
-  porque um PACS com arquivo em fita pode levar minutos até a primeira
-  sub-operação.
+  [`DCMTKServiceClassUser.mm:76`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/DCMTKServiceClassUser.mm#L76)). O Horus espera bem
+  mais que o DIMSE comum, porque um PACS com arquivo em fita pode levar
+  minutos até a primeira sub-operação. O prazo é de 10 minutos sem nenhuma
+  mensagem (`retrieve_timeout`, 0 = sem prazo, como o Horos): sem prazo
+  nenhum, uma conexão que cai sem aviso prendia a tarefa, e o programa ao
+  fechar, para sempre.
 * **Cancelamento.** O Horos nunca envia C-CANCEL: cancela abortando a
   associação. O Horus manda C-CANCEL e, se o PACS não atender em 10 s,
   aborta.
@@ -490,12 +493,26 @@ o gravador e a rede DICOM; ficaram de fora:
   testes usam o modo padrão, com fork.
 * **Executável com rede:** o `--self-test` do `Horus.exe` abre o listener e
   faz um C-ECHO em 127.0.0.1 dentro do binário congelado.
+* **Revisão adversarial da rede:** quatro revisores, cada um com um foco
+  (protocolo e segurança; cliente e concorrência; Windows e dados;
+  interface Qt), leram o código de rede, e para cada achado um verificador
+  independente tentou refutar e reproduzir. Sobraram 30 achados
+  confirmados, que são 24 defeitos distintos (alguns foram vistos por mais
+  de um foco). Os mais graves: imagens já confirmadas ao equipamento que se
+  perdiam quando a base estava travada por outra importação, o listener TLS
+  travado por uma única conexão muda e um C-GET interrompido que apagava o
+  que já tinha chegado. Todos foram corrigidos. Cada correção tem um teste
+  que falha no código anterior (`tests/test_net_robustness.py`,
+  `tests/test_gui_network.py` e outros), menos uma corrida entre threads no
+  registro de atividade, que não dá para reproduzir de forma determinística.
 * **Windows de verdade:** o workflow `.github/workflows/horus-windows.yml`
-  roda os testes num runner Windows (59 aprovados), incluindo os que chamam
+  roda os testes num runner Windows (124 aprovados; os 3 do DCMTK ficam de
+  fora porque ele não está instalado lá), incluindo os que chamam
   o IMAPI2 pelo PowerShell e a Win32 de verdade
   (`tests/test_windows_real.py`). Ele também gera o `Horus.exe`, o
-  autotesta e produz o instalador. A primeira execução no Windows achou um
-  defeito que o Linux não mostrava: os testes gravavam texto sem declarar a
-  codificação, e o Windows usa cp1252. A gravação física em CD/DVD e
+  autotesta e produz o instalador. O Windows achou defeitos que o Linux não
+  mostrava: os testes gravavam texto sem declarar a codificação (o Windows
+  usa cp1252), e o `SO_REUSEADDR` do pynetdicom deixava um segundo
+  processo escutar na mesma porta do listener. A gravação física em CD/DVD e
   pendrive precisa ser homologada numa máquina com gravador, porque o
   runner não tem mídia.

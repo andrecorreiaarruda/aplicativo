@@ -248,3 +248,13 @@ def test_send_with_parallel_associations(tmp_path):
         assert lst.stats.associations >= 4  # uma associação por bloco
         assert lst.wait_idle()
         assert len(lst.db.images_for(study_ids=[s.id for s in lst.db.studies()])) == 7
+
+
+def test_tls_configuration_error_is_a_network_error(tmp_path):
+    """Achado GU8/CL1: CA ausente levantava FileNotFoundError fora do NetworkError,
+    e uma busca em vários nós perdia o resultado de todos."""
+    bad = node("PACS", free_port(), tls=True, tls_ca_file=str(tmp_path / "nao-existe.pem"))
+    res = scu.echo(local("CLI"), bad)
+    assert not res.ok and "TLS" in res.message
+    with pytest.raises(scu.NetworkError, match="TLS"):
+        scu.associate(scu.make_ae(local("CLI")), bad, local("CLI"))

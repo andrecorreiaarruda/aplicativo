@@ -425,3 +425,23 @@ def test_task_runner_cancel_all(app):
     assert runner.wait(5000)
     _settle(runner, app, 1000)
     assert not runner.busy()
+
+
+def test_stop_routes_the_last_received_batch(app, tmp_path):
+    """Achado GU2: ao parar, o listener importava a última leva depois de o
+    roteamento ter saído, e essas imagens nunca eram encaminhadas."""
+    from horus.net.config import RoutingRule
+
+    pacs = node("PACS", free_port())
+    db = Database(tmp_path / "base-R")
+    NetworkConfig(local("ROTEADOR"), [pacs], True, [RoutingRule(name="tudo", destination=pacs.id)]).save(db.base_dir)
+    service = NetworkService(db, Platform())
+    service.start()
+    _SERVICES.append(service)
+    assert service.running
+    # Um C-STORE que terminou um instante antes de fechar o programa.
+    received = write(make_dataset(), service.listener.incoming / "ultimo.dcm")
+    service.listener._queue.put(received)
+    service.stop()
+    with db.connect() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM routing_queue").fetchone()[0] == 1

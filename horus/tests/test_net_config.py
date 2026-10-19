@@ -154,3 +154,13 @@ def test_loose_types_and_bad_structure(tmp_path):
         # O arquivo estragado é guardado com outro nome, nunca sobrescrito.
         assert not (tmp_path / "network.json").exists()
     assert len(list(tmp_path.glob("network.json.ilegivel-*"))) >= 1
+
+
+def test_truncated_horos_plist_is_a_readable_error(tmp_path):
+    """Achado WI7/GU11: XML truncado escapava como ExpatError, sem aviso."""
+    from horus.net.horos_nodes import load_horos_nodes
+
+    src = tmp_path / "DICOMNodes.plist"
+    src.write_text('<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><array><dict><key>AETitle', encoding="utf-8")
+    with pytest.raises(ConfigError, match="Horos"):
+        load_horos_nodes(src)
