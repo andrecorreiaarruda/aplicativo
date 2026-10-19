@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QSize, Qt, QTimer
+from PySide6.QtCore import QItemSelectionModel, QSize, Qt, QTimer
 from PySide6.QtGui import QAction, QDragEnterEvent, QDropEvent, QIcon, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -206,28 +206,53 @@ class BrowserWindow(QMainWindow):
     # ------------------------------------------------------ listagem
 
     def refresh(self) -> None:
+        # A lista é reconstruída a cada lote recebido pela rede; o que o
+        # usuário estava olhando (seleção, item corrente, miniaturas
+        # escolhidas, rolagem) volta ao lugar em vez de sumir.
         expanded = {
             self.tree.topLevelItem(i).data(0, ROLE_ID)
             for i in range(self.tree.topLevelItemCount())
             if self.tree.topLevelItem(i).isExpanded()
         }
-        self.tree.clear()
+        selected = {(it.data(0, ROLE_KIND), it.data(0, ROLE_ID)) for it in self.tree.selectedItems()}
+        current = self.tree.currentItem()
+        current_key = (current.data(0, ROLE_KIND), current.data(0, ROLE_ID)) if current is not None else None
+        chosen_thumbs = {it.data(ROLE_ID) for it in self.thumbs.selectedItems()}
+        scroll = self.tree.verticalScrollBar().value()
         studies = self.db.studies(self.search.text())
-        for st in studies:
-            item = QTreeWidgetItem(
-                [st.patient_name or "(sem nome)", st.patient_id, _date(st.patient_birth_date), _date(st.study_date), st.study_description, st.modalities.replace("\\", "/"), str(st.number_of_images)]
-            )
-            item.setData(0, ROLE_KIND, "study")
-            item.setData(0, ROLE_ID, st.id)
-            item.setChildIndicatorPolicy(QTreeWidgetItem.ChildIndicatorPolicy.ShowIndicator)
-            self.tree.addTopLevelItem(item)
-            if st.id in expanded:
-                item.setExpanded(True)
+        self.tree.blockSignals(True)
+        try:
+            self.tree.clear()
+            for st in studies:
+                item = QTreeWidgetItem(
+                    [st.patient_name or "(sem nome)", st.patient_id, _date(st.patient_birth_date), _date(st.study_date), st.study_description, st.modalities.replace("\\", "/"), str(st.number_of_images)]
+                )
+                item.setData(0, ROLE_KIND, "study")
+                item.setData(0, ROLE_ID, st.id)
+                item.setChildIndicatorPolicy(QTreeWidgetItem.ChildIndicatorPolicy.ShowIndicator)
+                self.tree.addTopLevelItem(item)
+                if st.id in expanded:
+                    self._fill_series(item)  # com os sinais bloqueados, itemExpanded não dispara
+                    item.setExpanded(True)
+            for i in range(self.tree.topLevelItemCount()):
+                top = self.tree.topLevelItem(i)
+                for it in [top] + [top.child(j) for j in range(top.childCount())]:
+                    key = (it.data(0, ROLE_KIND), it.data(0, ROLE_ID))
+                    if key == current_key:
+                        self.tree.setCurrentItem(it, 0, QItemSelectionModel.SelectionFlag.NoUpdate)
+                    if key in selected:
+                        it.setSelected(True)
+        finally:
+            self.tree.blockSignals(False)
+        self.tree.verticalScrollBar().setValue(scroll)
         for col in range(1, 7):
             self.tree.resizeColumnToContents(col)
         total = sum(s.number_of_images for s in studies)
         self.summary.setText(f"{len(studies)} exame(s), {total} imagem(ns)")
         self._on_selection()
+        for row in range(self.thumbs.count()):
+            if self.thumbs.item(row).data(ROLE_ID) in chosen_thumbs:
+                self.thumbs.item(row).setSelected(True)
 
     def _fill_series(self, item: QTreeWidgetItem) -> None:
         if item.data(0, ROLE_KIND) != "study" or item.childCount():

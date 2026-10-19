@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import plistlib
 from pathlib import Path
-from xml.parsers.expat import ExpatError
 
 from .config import (
     MAX_SEND_ASSOCIATIONS,
@@ -62,7 +61,7 @@ def load_horos_nodes(path: str | Path) -> tuple[list[Node], list[str]]:
     try:
         with open(path, "rb") as fh:
             data = plistlib.load(fh)
-    except (OSError, plistlib.InvalidFileException, ValueError, ExpatError) as exc:
+    except Exception as exc:  # o plistlib levanta ExpatError, AttributeError, IndexError...
         raise ConfigError(f"não foi possível ler a lista do Horos ({path}): {exc}") from exc
     if not isinstance(data, list):
         raise ConfigError("o arquivo não é uma lista de nós do Horos (DICOMNodes.plist)")

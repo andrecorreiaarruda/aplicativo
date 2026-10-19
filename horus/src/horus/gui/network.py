@@ -16,6 +16,7 @@ from collections.abc import Callable
 from datetime import date, timedelta
 
 from pydicom.dataset import Dataset
+import shiboken6
 from PySide6.QtCore import QDate, QObject, Qt, Signal
 from PySide6.QtGui import QAction, QColor, QKeySequence
 from PySide6.QtWidgets import (
@@ -168,9 +169,12 @@ class NetworkService(QObject):
             self.state.emit(False)
 
     def stop(self) -> None:
-        self.router.stop()
+        # Primeiro o listener: ao parar ele importa o que ainda está na
+        # fila, e essas imagens precisam passar pelas regras de roteamento
+        # (o gancho sai junto com o roteador).
         if self.listener is not None:
             self.listener.stop()
+        self.router.stop()
 
     @property
     def running(self) -> bool:
@@ -181,11 +185,14 @@ class NetworkService(QObject):
 
         No Horos a maior parte das mudanças só vale depois de reabrir o
         programa ("Restart Horos to apply these changes"); aqui o listener é
-        reiniciado na hora.
+        reiniciado na hora. O roteamento não para: ele lê a configuração a
+        cada ciclo, e pará-lo prendia a interface enquanto um envio a um
+        destino lento terminava.
         """
         config.save(self.db.base_dir)
         self.config = config
-        self.stop()
+        if self.listener is not None:
+            self.listener.stop()
         self.start()
 
     def status_text(self) -> str:
@@ -597,8 +604,14 @@ class NetworkSettingsDialog(QDialog):
 
     def _export_horos(self) -> None:
         path, _ = QFileDialog.getSaveFileName(self, "Exportar para o Horos", "DICOMNodes.plist", "Lista de nós do Horos (*.plist)")
-        if path:
+        if not path:
+            return
+        try:
             save_horos_nodes(self.nodes, path)
+        except OSError as exc:
+            QMessageBox.warning(self, "Exportar para o Horos", f"Não foi possível gravar {path}: {exc}")
+            return
+        QMessageBox.information(self, "Exportar para o Horos", f"{len(self.nodes)} nó(s) gravado(s) em {path}.")
 
     def _local_settings(self) -> LocalSettings:
         loc = LocalSettings(**self._local.__dict__)
@@ -631,9 +644,13 @@ class NetworkSettingsDialog(QDialog):
     def _firewall(self) -> None:
         program = sys.executable
         if self.service.platform.allow_inbound_port(self.port.value(), program):
-            QMessageBox.information(self, "Firewall", "O Windows pediu confirmação de administrador para criar a regra.")
+            QMessageBox.information(
+                self, "Firewall",
+                f"Porta TCP {self.port.value()} liberada para o Horus no Firewall do Windows Defender. "
+                "Regras antigas do Horus, inclusive as de bloqueio, foram substituídas.",
+            )
         else:
-            QMessageBox.warning(self, "Firewall", "Não foi possível criar a regra (sem permissão de administrador?).")
+            QMessageBox.warning(self, "Firewall", "Não foi possível criar a regra (confirmação de administrador recusada ou netsh com erro).")
 
     def _save(self) -> None:
         config = NetworkConfig(self._local_settings(), list(self.nodes), self.routing.isChecked(), list(self.rules))
@@ -697,6 +714,17 @@ class SendDialog(QDialog):
         layout.addWidget(self.status)
         layout.addLayout(row)
 
+    def reject(self) -> None:
+        """Esc e o X da janela passam por aqui: com envio em andamento,
+        cancelam e fecham quando ele terminar, em vez de esconder a janela
+        e deixar o envio rodando sem como cancelar."""
+        if self.task is not None:
+            self.task.cancel_requested = True
+            self._close_when_done = True
+            self.status.setText("Cancelando…")
+            return
+        super().reject()
+
     def _node_changed(self, index: int) -> None:
         if 0 <= index < len(self.nodes):
             wanted = self.nodes[index].send_associations
@@ -742,12 +770,16 @@ class SendDialog(QDialog):
             text += ".\n\nFalhas:\n" + "\n".join(f"- {n}× {r}" for r, n in reasons.items())
         self.status.setText(text)
         self.service.log.emit(f"envio para {self.nodes[self.combo.currentIndex()].ae_title}: {text.splitlines()[0]}")
+        if getattr(self, "_close_when_done", False):
+            super().reject()
 
     def _failed(self, message: str) -> None:
         self.task = None
         self.close_btn.setText("Fechar")
         self.send_btn.setEnabled(True)
         self.status.setText("Falha no envio: " + message)
+        if getattr(self, "_close_when_done", False):
+            super().reject()
 
 
 # --------------------------------------------------------- consulta
@@ -859,10 +891,38 @@ def merge_studies(results: list[tuple[Node, Dataset]]) -> list[tuple[Node, Datas
     return [best[u] for u in order]
 
 
+def _get_into_base(db: Database, local, target: Node, level: str, uid: str, parent: str, incoming, progress, cancelled) -> str:
+    """C-GET de um exame ou série para a base.
+
+    O que chegou é importado mesmo que a recuperação falhe no meio (o PACS
+    caiu, status final de falha): o Horos grava cada sub-operação direto em
+    INCOMING, qualquer que seja o status final. A pasta temporária só é
+    apagada depois de importar; se a importação falhar, ela fica em
+    INCOMING/GET e o listener a retoma depois.
+    """
+    folder = incoming / uuid.uuid4().hex
+    failure: Exception | None = None
+    try:
+        res = scu.get(local, target, level, [uid], folder, study_uid=parent, progress=progress, cancelled=cancelled)
+    except scu.NetworkError as exc:
+        failure, res = exc, None
+    received = sorted(str(p) for p in folder.glob("*.dcm"))
+    imported = db.add_files(received, move=True, origin=ORIGIN_RECEIVED) if received else None
+    added = imported.added if imported else 0
+    if imported is None or not imported.transient:
+        # Duplicados e recusados ficam para trás; a pasta é só desta recuperação.
+        shutil.rmtree(folder, ignore_errors=True)
+    if failure is not None:
+        raise scu.NetworkError(f"{failure} ({added} imagem(ns) importada(s) antes da falha)") from failure
+    note = f" ({res.message})" if res is not None and res.message and res.message != "recuperação concluída" else ""
+    return f"{target.name}: {added} imagem(ns) importada(s) por C-GET{note}"
+
+
 ROLE_NODE = Qt.ItemDataRole.UserRole
 ROLE_UID = Qt.ItemDataRole.UserRole + 1
 ROLE_LEVEL = Qt.ItemDataRole.UserRole + 2
 ROLE_STUDY = Qt.ItemDataRole.UserRole + 3
+ROLE_LOADING = Qt.ItemDataRole.UserRole + 4
 
 
 class QueryWindow(QMainWindow):
@@ -1008,9 +1068,11 @@ class QueryWindow(QMainWindow):
                     break
                 task.report(f"Consultando {n.describe()}…")
                 try:
-                    found = scu.find(local, n, ident, cancelled=task.cancelled)
+                    found = scu.find(local, n, ident, cancelled=task.cancelled, limit=local.max_find_results)
                     results.extend((n, ds) for ds in found.matches)
-                except scu.NetworkError as exc:
+                    if found.warning:
+                        errors.append(f"{n.name}: {found.warning}")
+                except Exception as exc:  # um nó com problema não apaga o resultado dos outros
                     errors.append(f"{n.name}: {exc}")
             return results, errors
 
@@ -1066,15 +1128,32 @@ class QueryWindow(QMainWindow):
         self._busy(False, "Falha: " + message)
 
     def _expand(self, item: QTreeWidgetItem) -> None:
-        if item.data(0, ROLE_LEVEL) != "STUDY" or item.childCount():
+        if item.data(0, ROLE_LEVEL) != "STUDY" or item.childCount() or item.data(0, ROLE_LOADING):
             return
         target = self.service.config.node_by_id(item.data(0, ROLE_NODE))
         if target is None:
             return
         uid = item.data(0, ROLE_UID)
         local = self.service.config.local
+        # Recolher e expandir de novo antes da resposta não dispara outra
+        # consulta (as séries apareciam em dobro).
+        item.setData(0, ROLE_LOADING, True)
+
+        def alive() -> bool:
+            # Uma consulta nova limpa a árvore; o item pode não existir mais.
+            return shiboken6.isValid(item)
+
+        def failed(message: str) -> None:
+            if alive():
+                item.setData(0, ROLE_LOADING, False)
+            self.status.setText("Falha ao listar séries: " + message)
 
         def done(found) -> None:
+            if not alive():
+                return
+            item.setData(0, ROLE_LOADING, False)
+            if item.childCount():
+                return
             for ds in sorted(found.matches, key=lambda d: int(d.get("SeriesNumber", 0) or 0)):
                 child = QTreeWidgetItem([
                     f"Série {ds.get('SeriesNumber', '')} — {ds.get('SeriesDescription', '')}", "", "", "", "",
@@ -1086,7 +1165,7 @@ class QueryWindow(QMainWindow):
                 child.setData(0, ROLE_STUDY, uid)
                 item.addChild(child)
 
-        self.runner.start(lambda task: scu.find(local, target, series_query(uid)), on_done=done, on_error=lambda m: self.status.setText("Falha ao listar séries: " + m))
+        self.runner.start(lambda task: scu.find(local, target, series_query(uid)), on_done=done, on_error=failed)
 
     # ---------------------------------------------------- recuperação
 
@@ -1114,29 +1193,26 @@ class QueryWindow(QMainWindow):
         incoming = db.base_dir / paths.INCOMING_DIR_NAME / "GET"
 
         def job(task: Task):
-            summary = []
+            summary, errors = [], []
             for (node_id, level), entries in jobs.items():
                 target = self.service.config.node_by_id(node_id)
                 if target is None:
                     continue
                 for uid, study_uid in entries:
                     if task.cancelled():
-                        return summary
+                        return summary, errors
                     task.report(f"Recuperando de {target.describe()}…")
-                    progress = lambda done, total, _p: task.report(f"Recuperando de {target.name}: {done}/{total}", done, total)  # noqa: E731
-                    if target.retrieve == RETRIEVE_GET:
-                        folder = incoming / uuid.uuid4().hex
-                        try:
-                            res = scu.get(local, target, level, [uid], folder, study_uid=study_uid if level != "STUDY" else "", progress=progress, cancelled=task.cancelled)
-                            imported = db.add_files(res.files, move=True, origin=ORIGIN_RECEIVED)
-                        finally:
-                            # Duplicados e recusados ficam para trás; a pasta é só desta recuperação.
-                            shutil.rmtree(folder, ignore_errors=True)
-                        summary.append(f"{target.name}: {imported.added} imagem(ns) importada(s) por C-GET")
-                    else:
-                        res = scu.move(local, target, level, [uid], study_uid=study_uid if level != "STUDY" else "", progress=progress, cancelled=task.cancelled)
-                        summary.append(f"{target.name}: {res.completed} imagem(ns) enviada(s) por C-MOVE ({res.message})")
-            return summary
+                    progress = lambda done, total, _p, name=target.name: task.report(f"Recuperando de {name}: {done}/{total}", done, total)  # noqa: E731
+                    parent = study_uid if level != "STUDY" else ""
+                    try:
+                        if target.retrieve == RETRIEVE_GET:
+                            summary.append(_get_into_base(db, local, target, level, uid, parent, incoming, progress, task.cancelled))
+                        else:
+                            res = scu.move(local, target, level, [uid], study_uid=parent, progress=progress, cancelled=task.cancelled)
+                            summary.append(f"{target.name}: {res.completed} imagem(ns) enviada(s) por C-MOVE ({res.message})")
+                    except Exception as exc:  # um exame com problema não impede os outros
+                        errors.append(f"{target.name}: {exc}")
+            return summary, errors
 
         self._busy(True, "Recuperando…")
         self.task = self.runner.start(job, on_done=self._retrieved, on_error=self._failed, on_progress=self._progress)
@@ -1147,9 +1223,13 @@ class QueryWindow(QMainWindow):
             self.progress.setRange(0, total)
             self.progress.setValue(done)
 
-    def _retrieved(self, summary: list[str]) -> None:
+    def _retrieved(self, payload) -> None:
         self.task = None
-        self._busy(False, "; ".join(summary) or "Nada recuperado.")
+        summary, errors = payload
+        text = "; ".join(summary) or "Nada recuperado."
+        if errors:
+            text += " — falhas: " + "; ".join(errors)
+        self._busy(False, text)
         self.on_imported()
 
 
@@ -1167,7 +1247,7 @@ class ActivityDialog(QDialog):
         self.text = QPlainTextEdit()
         self.text.setReadOnly(True)
         if service.listener is not None:
-            for stamp, line in service.listener.activity:
+            for stamp, line in list(service.listener.activity):
                 self.text.appendPlainText(f"{time.strftime('%d/%m %H:%M:%S', time.localtime(stamp))}  {line}")
         service.log.connect(self._append)
         log_dir = service.db.base_dir / "logs"

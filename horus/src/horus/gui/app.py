@@ -131,14 +131,22 @@ def main(argv: list[str] | None = None) -> int:
     if sources:
         window.import_paths(sources, copy=not disc_mode)
     code = app.exec()
+    # Fechar a janela cancela o que ainda roda (recuperação, envio). Sem
+    # isso o processo seguia vivo e invisível até a tarefa terminar — para
+    # sempre, se a rede tivesse caído sem aviso no meio de um C-MOVE.
+    window.runner.cancel_all()
     if network is not None:
         network.stop()
-    window.runner.wait(5000)
+    finished = window.runner.wait(15000)  # cobre o C-CANCEL e o A-ABORT (CANCEL_GRACE)
     if disc_mode:
         # A base do modo disco só tinha referências à mídia; não sobra nada.
         import shutil
 
         shutil.rmtree(db.base_dir, ignore_errors=True)
+    if not finished:
+        # O que já foi confirmado na base está gravado; uma tarefa presa não
+        # pode manter o processo vivo sem janela (o Qt esperaria por ela).
+        os._exit(code)
     return code
 
 

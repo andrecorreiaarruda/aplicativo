@@ -6,6 +6,7 @@ janelas de consulta, recuperação e envio contra ele.
 
 from __future__ import annotations
 
+import time
 from datetime import date
 from pathlib import Path
 
@@ -16,6 +17,7 @@ pytest.importorskip("PySide6.QtWidgets")
 from conftest import make_dataset, write
 from netutil import free_port, local, node, running_listener
 from pydicom.uid import generate_uid
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from horus.database import Database
@@ -75,6 +77,16 @@ def _browser(service: NetworkService) -> BrowserWindow:
     window = BrowserWindow(service.db, Platform(), network=service)
     _WINDOWS.append(window)
     return window
+
+
+def _wait(cond, timeout: float = 10.0) -> bool:
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        QApplication.processEvents()
+        if cond():
+            return True
+        time.sleep(0.02)
+    return cond()
 
 
 def _settle(runner, app, ms: int = 30000) -> None:
@@ -280,3 +292,136 @@ def test_routing_rules_in_settings(app, tmp_path):
         activity.done(0)
     finally:
         service.stop()
+
+
+# ------------------------------------------- achados da revisão (interface)
+
+
+def test_send_dialog_escape_cancels_instead_of_hiding(app, tmp_path, monkeypatch):
+    """Achado CL8/GU4: Esc escondia a janela e o envio seguia sem cancelamento."""
+    from horus.net import scu as scu_mod
+
+    started = []
+
+    def slow_send(local_, node_, paths_, progress=None, cancelled=lambda: False, **k):
+        started.append(True)
+        while not cancelled():
+            time.sleep(0.02)
+        return scu_mod.SendResult(total=len(paths_), cancelled=True)
+
+    monkeypatch.setattr(scu_mod, "send", slow_send)
+    service = _service(tmp_path, "CLIENTE", [node("PACS", 104)], enabled=False)
+    browser = _browser(service)
+    dialog = SendDialog(["a.dcm"], service, browser.runner)
+    dialog.show()
+    dialog.start()
+    assert _wait(lambda: bool(started))
+    dialog.reject()  # o que Esc e o X da janela fazem
+    assert dialog.task is not None and dialog.task.cancel_requested
+    assert dialog.isVisible() and "Cancelando" in dialog.status.text()
+    _settle(browser.runner, app)
+    assert not dialog.isVisible() and "cancelado" in dialog.status.text()
+
+
+def test_cget_failure_keeps_what_arrived(app, tmp_path):
+    """Achado WI3/GU1: um C-GET que falhava no meio apagava o que já tinha chegado."""
+    from pynetdicom import AE, evt
+    from pynetdicom.sop_class import CTImageStorage, StudyRootQueryRetrieveInformationModelGet
+
+    from horus.gui.network import _get_into_base
+    from horus.net import scu as scu_mod
+
+    study, series = generate_uid(), generate_uid()
+    sources = [make_dataset(study_uid=study, series_uid=series, instance_number=i + 1) for i in range(3)]
+
+    def serve(event):
+        yield 3
+        for ds in sources[:2]:
+            yield 0xFF00, ds
+        event.assoc.abort()  # o PACS cai antes da terceira imagem
+
+    port = free_port()
+    ae = AE(ae_title="PACS")
+    ae.add_supported_context(StudyRootQueryRetrieveInformationModelGet)
+    ae.add_supported_context(CTImageStorage, scu_role=True, scp_role=True)
+    server = ae.start_server(("127.0.0.1", port), block=False, evt_handlers=[(evt.EVT_C_GET, serve)])
+    try:
+        db = Database(tmp_path / "base")
+        incoming = tmp_path / "base" / "INCOMING.noindex" / "GET"
+        with pytest.raises(scu_mod.NetworkError, match="2 imagem"):
+            _get_into_base(db, local("CLIENTE"), node("PACS", port, retrieve=RETRIEVE_GET), "STUDY", study, "", incoming, None, lambda: False)
+        assert sum(s.number_of_images for s in db.studies()) == 2
+        assert not list(incoming.rglob("*.dcm"))
+    finally:
+        server.shutdown()
+
+
+def test_expanding_twice_does_not_duplicate_series(app, tmp_path, monkeypatch):
+    """Achado GU9: recolher e expandir antes da resposta duplicava as séries."""
+    from horus.net import scu as scu_mod
+
+    ctx, pacs, study = _pacs_with_study(tmp_path)
+    try:
+        service = _service(tmp_path, "CLIENTE", [node("PACS", pacs.config.local.port)], enabled=False)
+        win = QueryWindow(service, _browser(service).runner, lambda: None)
+        win.preset.setCurrentText("Qualquer data")
+        win.search()
+        _settle(win.runner, app)
+        real_find = scu_mod.find
+
+        def slow_find(*a, **k):
+            time.sleep(0.5)
+            return real_find(*a, **k)
+
+        monkeypatch.setattr(scu_mod, "find", slow_find)
+        item = win.tree.topLevelItem(0)
+        item.setExpanded(True)
+        item.setExpanded(False)
+        item.setExpanded(True)
+        _settle(win.runner, app)
+        assert item.childCount() == 1
+        # Uma busca nova enquanto as séries chegam não quebra o retorno.
+        item2 = win.tree.topLevelItem(0)
+        item2.setExpanded(False)
+        item2.takeChildren()
+        item2.setExpanded(True)
+        win.tree.clear()
+        _settle(win.runner, app)
+    finally:
+        ctx.__exit__(None, None, None)
+
+
+def test_refresh_keeps_the_users_selection(app, tmp_path):
+    """Achado GU7: cada lote recebido pela rede apagava a seleção da lista."""
+    service = _service(tmp_path, "CLIENTE", [], enabled=False)
+    for pid in ("A1", "B2"):
+        service.db.add_files([write(make_dataset(patient_id=pid, patient_name=f"PAC^{pid}"), tmp_path / "src" / f"{pid}.dcm")])
+    browser = _browser(service)
+    browser.refresh()
+    target = browser.tree.topLevelItem(1)
+    browser.tree.setCurrentItem(target)
+    wanted = target.data(0, Qt.ItemDataRole.UserRole + 1)
+    browser.refresh()
+    current = browser.tree.currentItem()
+    assert current is not None and current.data(0, Qt.ItemDataRole.UserRole + 1) == wanted
+    assert [it.data(0, Qt.ItemDataRole.UserRole + 1) for it in browser.tree.selectedItems()] == [wanted]
+    assert browser.thumbs.count() == 1
+
+
+def test_task_runner_cancel_all(app):
+    from horus.gui.tasks import TaskRunner
+
+    runner = TaskRunner()
+
+    def forever(task):
+        while not task.cancelled():
+            time.sleep(0.02)
+        return "ok"
+
+    runner.start(forever)
+    runner.start(forever)
+    assert runner.busy()
+    runner.cancel_all()
+    assert runner.wait(5000)
+    _settle(runner, app, 1000)
+    assert not runner.busy()

@@ -81,5 +81,13 @@ class TaskRunner:
         self.pool.start(task)
         return task
 
+    def busy(self) -> bool:
+        return bool(self._alive)
+
+    def cancel_all(self) -> None:
+        """Pede o cancelamento de todas as tarefas vivas (ao fechar o programa)."""
+        for task in list(self._alive):
+            task.cancel_requested = True
+
     def wait(self, msecs: int = -1) -> bool:
         return self.pool.waitForDone(msecs)
