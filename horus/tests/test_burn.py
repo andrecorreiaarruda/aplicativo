@@ -101,7 +101,7 @@ def test_supplementary_folder_and_viewer(tmp_path: Path, ct_series):
     )
     assert (disc.folder / "laudos" / "laudo.pdf").exists()
     assert (disc.folder / "HORUS" / "Horus.exe").exists()
-    autorun = (disc.folder / "AUTORUN.INF").read_text()
+    autorun = (disc.folder / "AUTORUN.INF").read_text(encoding="ascii")
     assert "label=V" in autorun and "open=HORUS\\Horus.exe --disc" in autorun
 
 
@@ -127,7 +127,7 @@ def test_default_label_rules():
 
 def test_iso_roundtrip(tmp_path: Path, mixed_folder: Path):
     disc = prepare_disc(_sources(mixed_folder), DiscOptions(label="Teste ISO"), tmp_path / "stage")
-    (disc.folder / "Leia-me com nome longo.txt").write_text("olá")
+    (disc.folder / "Leia-me com nome longo.txt").write_text("olá", encoding="utf-8")
     iso_path = build_iso(disc.folder, tmp_path / "out.iso", disc.label)
 
     iso = pycdlib.PyCdlib()
@@ -144,7 +144,7 @@ def test_iso_roundtrip(tmp_path: Path, mixed_folder: Path):
         # Joliet guarda o nome original para o Windows.
         buf = io.BytesIO()
         iso.get_file_from_iso_fp(buf, joliet_path="/Leia-me com nome longo.txt")
-        assert buf.getvalue().decode() == "olá"
+        assert buf.getvalue().decode("utf-8") == "olá"
         names = [c.file_identifier().decode() for c in iso.list_children(iso_path="/")]
         assert "LEIA_ME_.TXT;1" in names
     finally:

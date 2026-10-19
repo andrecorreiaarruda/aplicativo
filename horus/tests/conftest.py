@@ -161,7 +161,7 @@ def mixed_folder(tmp_path: Path) -> Path:
     write(sc, root / "sc" / "rgb.dcm")
     multi = np.stack([np.full((8, 8), v, dtype=np.uint16) for v in (100, 200, 300)])
     write(make_dataset(patient_id="PAC001", pixels=multi, modality="CT"), root / "mf" / "multi.dcm")
-    (root / "notes.txt").write_text("não é DICOM")
+    (root / "notes.txt").write_text("não é DICOM", encoding="utf-8")
     return root
 
 
