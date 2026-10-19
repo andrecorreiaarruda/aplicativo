@@ -1,9 +1,10 @@
-# Horus — visualizador e gravador DICOM para Windows
+# Horus — visualizador, gravador e nó DICOM para Windows
 
 Reimplementação do fluxo do [Horos](https://horosproject.org) (visualizador
 DICOM livre, exclusivo do macOS) com a parte dependente de sistema isolada,
-para rodar no Windows: base local de exames, visualizador 2D e gravação de
-exames em CD/DVD, pendrive, imagem ISO ou pasta, com DICOMDIR.
+para rodar no Windows: base local de exames, visualizador 2D, gravação de
+exames em CD/DVD, pendrive, imagem ISO ou pasta, com DICOMDIR, e rede DICOM
+(recepção, envio, consulta e recuperação, auto-roteamento).
 
 Como o Horos funciona, linha a linha, e o que substitui cada dependência
 do macOS: [docs/EVIDENCIAS.md](docs/EVIDENCIAS.md).
@@ -66,6 +67,59 @@ desvio 12), e a régua mede 140,80 mm (176 pixels de 0,8 mm).
   - **imagem ISO** (ISO 9660 + Joliet; o Windows monta com duplo clique);
   - **pasta**.
 
+## Rede DICOM
+
+O menu **Rede** reúne consulta (Ctrl+K), envio (Ctrl+E), regras de
+roteamento, configurações e o registro de atividade. Por baixo está o
+pynetdicom, no lugar do DCMTK que o Horos embute.
+
+**Este computador.** O Horus abre um listener (Storage SCP) assim que
+inicia. O AE title padrão é o nome curto da máquina, até 16 caracteres, e a
+porta padrão é 11112, como no Horos. Para receber exames de um equipamento
+ou PACS, cadastre nele o AE title, um dos endereços mostrados em
+*Configurações de rede → Este computador* e a porta. No Windows, a porta
+precisa estar liberada no Firewall do Windows Defender. O botão "Liberar a
+porta no Firewall do Windows…" cria a regra e pede confirmação de
+administrador. O mesmo listener responde a C-FIND, C-MOVE e C-GET, então
+outros equipamentos podem consultar a base do Horus. Isso pode ser
+desligado, assim como dá para aceitar conexões só de nós cadastrados.
+
+**Nós remotos.** Para cada PACS ou equipamento, informe a descrição, o AE
+title, o endereço, a porta, a sintaxe de envio, o número de associações
+simultâneas (1, 2 ou 4) e o modo de recuperação. "Testar conexão" faz um
+C-ECHO. Quem vem do Horos importa a lista em *Importar do Horos…*; o
+arquivo é o `DICOMNodes.plist` que o painel Locations do Horos salva.
+
+**C-MOVE ou C-GET.** No C-MOVE, o PACS abre uma conexão de volta para o
+listener do Horus. O Horus precisa estar cadastrado no PACS, com AE
+title, IP e porta, e a porta liberada no firewall. É o modo mais
+compatível e a causa mais comum de falha ("destino desconhecido",
+0xA801). No C-GET, as imagens voltam pela mesma conexão: não exige
+cadastro nem porta aberta, o que serve atrás de NAT ou VPN, mas nem todo
+PACS oferece.
+
+**Consulta.** Nome e descrição buscam pelo início ("silva" acha "SILVA^JOAO");
+ID e número de acesso, exatos. Há presets de data como os do Horos e filtro
+por modalidade. Exames que já estão na base aparecem em verde; expandir um
+exame lista as séries. A recuperação pode ser cancelada: o Horus manda
+C-CANCEL e, se o PACS não atender, encerra a associação.
+
+**Auto-roteamento.** Em *Configurações de rede → Auto-roteamento*, cada
+regra manda as imagens novas a um nó. O filtro combina origem (recebidas
+pela rede, importadas, geradas pelo Horus ou todas), modalidades, AE de
+origem e trecho da descrição. A fila fica na base: falhas são repetidas a
+cada 30 s, até o limite da regra, e o que estava na fila continua depois
+de reabrir o programa. *Rede → Aplicar regras de roteamento à seleção*
+manda exames já existentes pelas regras ativas.
+
+| Consulta e recuperação | Este computador |
+|---|---|
+| ![Consulta](docs/img/consulta.png) | ![Rede local](docs/img/rede_local.png) |
+| **Nós remotos** | **Auto-roteamento** |
+| ![Nós](docs/img/rede_nos.png) | ![Auto-roteamento](docs/img/roteamento.png) |
+
+O registro de rede fica em `logs\rede.log`, dentro da pasta da base.
+
 ## Rodar a partir do código
 
 Requer Python 3.10 ou mais novo (64 bits).
@@ -126,7 +180,10 @@ QT_QPA_PLATFORM=offscreen python -m pytest -q
 ```
 
 Os testes geram exames sintéticos; nenhum dado de paciente entra no
-repositório. `tests/test_windows_real.py` só roda no Windows, porque chama
+repositório. Os de rede abrem associações de verdade em 127.0.0.1. Com o
+DCMTK instalado (`apt install dcmtk`), `tests/test_net_dcmtk.py` confere a
+interoperabilidade com `echoscu`, `storescu`, `findscu`, `getscu`,
+`movescu`, `storescp` e `dcmqrscp`. `tests/test_windows_real.py` só roda no Windows, porque chama
 o IMAPI2 e a API Win32 de verdade.
 
 ## Estrutura
@@ -139,8 +196,10 @@ horus/
     importer.py   detecção de DICOM e leitura de DICOMDIR
     anonymize.py  anonimização (Anonymization)
     burn/         preparo do disco, DICOMDIR, ISO e destinos (BurnerWindowController)
-    platform/     Windows (IMAPI2, Win32), macOS (drutil/diskutil) e Linux
-    gui/          interface Qt: navegador, visualizador, gravador
+    net/          rede DICOM: listener e Q/R SCP, cliente (eco, envio, consulta,
+                  recuperação), configuração, auto-roteamento, lista de nós do Horos
+    platform/     Windows (IMAPI2, Win32, firewall), macOS (drutil/diskutil) e Linux
+    gui/          interface Qt: navegador, visualizador, gravador, rede
     selftest.py   autoteste do executável empacotado
   packaging/      PyInstaller, ícone, build do Windows e instalador
   tests/
@@ -150,7 +209,9 @@ horus/
 ## Limitações
 
 - só 2D: sem MPR, 3D, renderização de volume ou fusão PET/CT;
-- sem rede DICOM (recepção C-STORE, envio, Query/Retrieve);
+- rede sem WADO, sem Bonjour e sem envio com compressão com perdas; o
+  roteamento não tem agendamento por horário (ver a seção 7 de
+  [docs/EVIDENCIAS.md](docs/EVIDENCIAS.md));
 - ROIs só de régua e retângulo;
 - durante a escrita em CD/DVD o progresso é indeterminado, porque o
   IMAPI2 não entrega eventos ao PowerShell durante `Write`;

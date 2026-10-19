@@ -180,7 +180,197 @@ comprimentos explícitos (linhas 54–81).
 | DMG | [70](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/BurnerWindowController.m#L70)–93 | `hdiutil create <arquivo>.dmg -srcfolder <pasta>` |
 | tamanho | [878](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/BurnerWindowController.m#L878) | `/usr/bin/du -ks` |
 
-## 5. Portabilidade para o Windows
+## 5. Rede DICOM
+
+No Horos, toda a rede passa por uma cópia muito modificada do `dcmqrscp`
+do DCMTK 3.5.4, compilada de `Binaries/dcmtk-source` e embrulhada pela
+classe `DCMTKQueryRetrieveSCP`. Um único listener atende C-ECHO, C-STORE,
+C-FIND, C-MOVE e C-GET. Do lado cliente há uma classe por serviço:
+`DCMTKStoreSCU` para o envio e a árvore `DCMTKQueryNode` para consulta e
+recuperação. O eco usa o `echoscu` do DCMTK, que vem embutido no
+aplicativo. Os nós remotos ficam na chave `SERVERS` das preferências
+(NSUserDefaults), e o auto-roteamento fica em `DicomDatabase+Routing`.
+
+```mermaid
+flowchart LR
+  subgraph Horos
+    L[DCMTKQueryRetrieveSCP<br/>dcmqrscp modificado] -->|C-STORE| T[(TEMP.noindex)]
+    T -->|rename| I[(INCOMING.noindex)]
+    I -->|importação a cada 3 s| D[(Core Data)]
+    L -->|C-FIND / C-MOVE / C-GET| H[OsiriXSCPDataHandler<br/>NSPredicate]
+    H --> D
+    S[SendController<br/>DCMTKStoreSCU] -->|C-STORE| X((nó remoto))
+    Q[QueryController<br/>DCMTKQueryNode] -->|C-FIND / C-MOVE / C-GET| X
+    R[DicomDatabase+Routing] --> S
+  end
+  X -->|sub-associação do C-MOVE| L
+```
+
+O Horus refaz cada peça com o pynetdicom, num pacote próprio (`net/`):
+
+| Horos | Horus |
+|---|---|
+| `DCMTKQueryRetrieveSCP` + `dcmqrsrv.mm` | `net/scp.py` (`DicomListener`) |
+| `OsiriXSCPDataHandler` | `net/query.py` (`QueryEngine`, sobre o SQLite) |
+| `DCMTKStoreSCU`, `DCMTKQueryNode`, `echoscu` | `net/scu.py` |
+| `SERVERS`, `AETITLE`, `AEPORT` nas preferências | `net/config.py` (`network.json` na pasta da base) |
+| `DicomDatabase+Routing` | `net/routing.py` |
+| `QueryController`, `SendController`, painéis Listener/Locations | `gui/network.py` |
+
+### 5.1 Listener (Storage SCP)
+
+* **AE title e porta.** O padrão do AE title é o nome curto da máquina,
+  cortado em 16 caracteres, e a porta padrão é 11112
+  ([`DefaultsOsiriX.m:765–784`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/DefaultsOsiriX.m#L765-L784)). Se o nome vier vazio, o Horos usa
+  `HOROS` ([`AppController.m:1195–1210`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/AppController.m#L1195-L1210)). O Horus segue a mesma
+  regra (`default_ae_title`). Um AE fixo igual em todas as estações
+  quebraria o C-MOVE: o PACS entrega as imagens pelo AE title.
+* **Nenhum controle de acesso.** A checagem do AE de quem chama está
+  comentada ([`dcmqrsrv.mm:1621–1634`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Binaries/dcmtk-source/dcmqrdb/dcmqrsrv.mm#L1621-L1634)), e as restrições de
+  C-MOVE ao mesmo AE ou host estão desligadas
+  ([`DCMTKQueryRetrieveSCP.mm:243–249`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/DCMTKQueryRetrieveSCP.mm#L243-L249)). Qualquer equipamento
+  pode enviar, consultar e mandar mover qualquer exame. O Horus aceita
+  todos por padrão, como o Horos, e tem a opção "Aceitar conexões só de
+  nós cadastrados".
+* **Disco cheio.** A associação é recusada quando o espaço livre do volume
+  da base cai abaixo de min(300 MB, 1% do volume), com a medida guardada
+  por 20 s ([`DicomDatabase.mm:1272–1294`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/DicomDatabase.mm#L1272-L1294),
+  [`dcmqrsrv.mm:1607–1619`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Binaries/dcmtk-source/dcmqrdb/dcmqrsrv.mm#L1607-L1619)). O Horus usa a mesma regra, mas
+  responde 0xA700 (sem recursos) ao C-STORE em vez de recusar a
+  associação. Assim o equipamento vê a causa no status.
+* **Gravação.** O objeto recebido é gravado na sintaxe em que chegou,
+  primeiro em `TEMP.noindex` e depois renomeado para `INCOMING.noindex`.
+  Uma transferência interrompida nunca deixa arquivo pela metade na
+  entrada ([`dcmqrsrv.mm:958–1006`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Binaries/dcmtk-source/dcmqrdb/dcmqrsrv.mm#L958-L1006)). Uma thread importa a
+  entrada a cada `LISTENERCHECKINTERVAL` = 3 s
+  ([`DicomDatabase.mm:3466–3487`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/DicomDatabase.mm#L3466-L3487)). O AE de quem enviou vai para o
+  SourceApplicationEntityTitle ([`DefaultsOsiriX.m:1157`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/DefaultsOsiriX.m#L1157)). O Horus
+  grava `.part`, faz `os.replace` para `.dcm` em `INCOMING.noindex`, e uma
+  thread importa a cada fim de associação ou lote, com o mesmo campo
+  SourceAE preenchido.
+* **Concorrência.** O Horos abre uma thread por associação, até 20, com
+  espera ativa ([`dcmqrsrv.mm:1709–1724`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Binaries/dcmtk-source/dcmqrdb/dcmqrsrv.mm#L1709-L1724)). O Horus usa o servidor
+  com threads do pynetdicom, com o mesmo limite de 20.
+* **TLS.** O certificado sai do Keychain e é exportado como PEM para
+  `/tmp` ([`DCMTKQueryRetrieveSCP.mm:421–448`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/DCMTKQueryRetrieveSCP.mm#L421-L448)). No Horus, o
+  certificado e a chave são arquivos PEM apontados nas configurações, e o
+  `ssl` do Python exige TLS 1.2 ou mais.
+
+### 5.2 Servidor de consulta e recuperação (Q/R SCP)
+
+* **Modelos.** O Horos só oferece Study Root
+  ([`DCMTKQueryRetrieveSCP.mm:247–249`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/DCMTKQueryRetrieveSCP.mm#L247-L249),
+  [`dcmqrdbq.mm:475–486`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Binaries/dcmtk-source/dcmqrdb/dcmqrdbq.mm#L475-L486)). O Horus oferece Study Root e Patient
+  Root.
+* **Correspondência.** O Horos compara texto sem diferenciar maiúsculas
+  nem acentos (`[cd]` nos NSPredicate). O nome do paciente é quebrado em
+  palavras: a primeira abre o nome e as demais podem aparecer em qualquer
+  ponto ([`OsiriXSCPDataHandler.mm:257–267`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/OsiriXSCPDataHandler.mm#L257-L267),
+  [`BrowserController.m:20544–20595`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/BrowserController.m#L20544-L20595)). Com `*` no meio do valor,
+  vira LIKE ([`OsiriXSCPDataHandler.mm:137–185`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/OsiriXSCPDataHandler.mm#L137-L185)). O Horus faz o
+  mesmo no SQLite, com a função `horus_fold` (sem acento, maiúsculas)
+  registrada na conexão. Faixas de data e hora, listas de UID e
+  correspondência universal seguem a PS3.4 C.2.2.2.
+* **Limite.** No máximo 10 000 respostas por C-FIND de estudo ou série
+  ([`OsiriXSCPDataHandler.mm:1612–1619`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/OsiriXSCPDataHandler.mm#L1612-L1619),
+  [`DefaultsOsiriX.m:998`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/DefaultsOsiriX.m#L998)). O Horus tem o mesmo limite, e um limite
+  maior no nível de imagem.
+* **C-MOVE.** O destino é procurado pelo AE title na lista de nós
+  ([`dcmqrcbm.mm:962–1042`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Binaries/dcmtk-source/dcmqrdb/dcmqrcbm.mm#L962-L1042)). Um AE desconhecido recebe 0xA801.
+  Cada imagem é convertida, na hora, para a sintaxe que o destino aceitou
+  ([`dcmqrcbm.mm:814–913`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Binaries/dcmtk-source/dcmqrdb/dcmqrcbm.mm#L814-L913)). O pynetdicom abre a sub-associação
+  sozinho e não expõe a negociação. Por isso o Horus faz antes uma
+  associação curta, só de negociação, para saber o que o destino aceita.
+* **C-GET.** As imagens voltam pela mesma associação, no papel que o
+  cliente propôs ([`dcmqrsrv.mm:1380–1411`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Binaries/dcmtk-source/dcmqrdb/dcmqrsrv.mm#L1380-L1411)).
+
+### 5.3 Envio (Storage SCU)
+
+* **Contextos.** O `DCMTKStoreSCU` propõe sempre a mesma lista fixa de 64
+  classes SOP, com dois contextos por classe: a sintaxe preferida do nó e
+  a reserva [Explicit LE, Explicit BE, Implicit LE]
+  ([`DCMTKStoreSCU.mm:288–367`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/DCMTKStoreSCU.mm#L288-L367)). Arquivo de classe fora da lista
+  falha. O Horus propõe as classes dos arquivos enviados, com a mesma
+  reserva, e divide em mais de uma associação quando passa dos 128
+  contextos.
+* **Status.** O Horos aceita 0x0000 e 0xBxxx. Qualquer outro status encerra
+  a associação inteira, e os arquivos restantes contam como erro
+  ([`DCMTKStoreSCU.mm:875–913`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/DCMTKStoreSCU.mm#L875-L913)). O Horus segue arquivo a arquivo e
+  informa cada falha. Conta também 0x0107 e 0x0116 como aviso, como manda
+  a PS3.7, e refaz a associação uma vez se ela cair no meio.
+* **Associações simultâneas.** O usuário escolhe 1, 2 ou 4 associações, e
+  os arquivos são divididos em blocos contíguos
+  ([`SendController.m:560–580`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/SendController.m#L560-L580), [`DefaultsOsiriX.m:1165–1166`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/DefaultsOsiriX.m#L1165-L1166)).
+  O Horus faz o mesmo, por nó e por envio.
+* **Tempos.** `DICOMTimeout` = 40 s para ACSE/DIMSE e
+  `DICOMConnectionTimeout` = 10 s para conectar
+  ([`DefaultsOsiriX.m:1034–1035`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/DefaultsOsiriX.m#L1034-L1035)). O Horus usa os mesmos valores.
+* **Eco.** O botão Verify roda o `echoscu` embutido e só olha o código de
+  saída. Se o executável não existir, o resultado é "OK"
+  ([`QueryController.mm:595–601`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/QueryController.mm#L595-L601)). O Horus faz o C-ECHO no próprio
+  processo e exige status 0x0000.
+
+### 5.4 Consulta e recuperação (Q/R SCU)
+
+* **Identificador.** O de estudo vem de `DCMTKRootQueryNode`
+  ([`DCMTKRootQueryNode.mm:65–99`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/DCMTKRootQueryNode.mm#L65-L99)). Nome e descrição ganham `*` no
+  fim; ID do paciente e número de acesso vão exatos
+  ([`QueryController.mm:2508`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/QueryController.mm#L2508)). Sem o `*`, a maioria dos PACS faz
+  correspondência exata, e "SILVA" não acha "SILVA^JOAO".
+* **Datas.** Os presets são hoje, ontem, anteontem, últimos 2 e 7 dias,
+  último mês, últimos 3 meses, uma data e um intervalo. "Últimos N" conta
+  N dias para trás e deixa a faixa aberta no fim (`AAAAMMDD-`)
+  ([`QueryController.mm:4126–4220`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/QueryController.mm#L4126-L4220)).
+* **Vários nós.** As respostas são mescladas pelo StudyInstanceUID, e fica a
+  que tem mais imagens; a recuperação vai ao nó dessa resposta. O Horus
+  faz igual (`merge_studies`).
+* **C-MOVE e C-GET.** O modo de recuperação é escolhido por nó:
+  `retrieveMode` 0 = C-MOVE, 1 = C-GET, 2 = WADO
+  ([`DCMNetServiceDelegate.h:40–42`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/DCM%20Framework/DCMNetServiceDelegate.h#L40-L42)). O C-MOVE espera as
+  respostas sem prazo (`DIMSE_BLOCKING`,
+  [`DCMTKServiceClassUser.mm:76`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/DCMTKServiceClassUser.mm#L76)). O Horus também espera sem prazo,
+  porque um PACS com arquivo em fita pode levar minutos até a primeira
+  sub-operação.
+* **Cancelamento.** O Horos nunca envia C-CANCEL: cancela abortando a
+  associação. O Horus manda C-CANCEL e, se o PACS não atender em 10 s,
+  aborta.
+
+### 5.5 Nós e auto-roteamento
+
+* **Lista de nós.** É um array de dicionários em `SERVERS`
+  ([`DefaultsOsiriX.m:743–756`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/DefaultsOsiriX.m#L743-L756)), que o painel Locations salva e
+  carrega como `DICOMNodes.plist`
+  ([`OSILocationsPreferencePanePref.m:612–700`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Preference%20Panes/OSILocationsPreferencePane/OSILocationsPreferencePanePref.m#L612-L700)). O Horus importa
+  e exporta esse arquivo (`net/horos_nodes.py`). Os tipos frouxos do
+  Horos são aceitos (porta em texto, `Activated` como "1"). As sintaxes de
+  envio com perdas, que o Horus não gera, viram "como está na base", com
+  aviso.
+* **Auto-roteamento.** Um timer de 10 s
+  ([`DicomDatabase+Routing.mm:98–106`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/DicomDatabase%2BRouting.mm#L98-L106)) envia uma fila que fica em
+  memória e é esvaziada antes do envio
+  ([`DicomDatabase+Routing.mm:225–233`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/DicomDatabase%2BRouting.mm#L225-L233)). O destino é procurado pela
+  descrição do nó ([`DicomDatabase+Routing.mm:256–265`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/DicomDatabase%2BRouting.mm#L256-L265)). Depois de
+  uma falha, a thread dorme 4 s e devolve o grupo inteiro à fila
+  ([`DicomDatabase+Routing.mm:166–176`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/DicomDatabase%2BRouting.mm#L166-L176)), embora a interface
+  prometa "a cada 30 s". O Horus guarda a fila numa tabela do SQLite, que
+  sobrevive ao fechar o programa. A regra aponta para o id do nó. Só os
+  arquivos que falharam voltam à fila, e a nova tentativa espera 30 s. O
+  envio continua sendo uma associação por paciente.
+
+### 5.6 Defeitos do Horos que não foram copiados
+
+| Defeito | Onde | No Horus |
+|---|---|---|
+| O envio "agrupa por paciente", mas `[nil compare:]` devolve 0 e tudo cai no primeiro grupo | [`SendController.m:505–530`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/SendController.m#L505-L530) | envio sem esse agrupamento; o roteamento agrupa por paciente de fato |
+| Eco "OK" quando o `echoscu` não existe | [`QueryController.mm:595–601`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/QueryController.mm#L595-L601) | C-ECHO no processo, com status conferido |
+| Preset de data "after" cai no "last 2 days" (falta `break`) | [`QueryController.mm:4164–4166`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/QueryController.mm#L4164-L4166) | presets testados um a um |
+| C-GET sem negociação de papel SCP: PACS estritos não devolvem as imagens | [`DCMTKQueryNode.mm:1785–1794`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/DCMTKQueryNode.mm#L1785-L1794) | papel SCP pedido para cada classe de armazenamento |
+| Laço infinito possível na mescla de nós Bonjour (`objectAtIndex:` no lugar de `removeObjectAtIndex:`) | [`DCMNetServiceDelegate.m:410–419`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/DCM%20Framework/DCMNetServiceDelegate.m#L410-L419) | sem Bonjour (ver a seção 7) |
+| Fila de roteamento só em memória | [`DicomDatabase+Routing.mm:225–233`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/DicomDatabase%2BRouting.mm#L225-L233) | fila persistente no SQLite |
+| Regra de roteamento ligada à descrição do nó | [`DicomDatabase+Routing.mm:256–265`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/DicomDatabase%2BRouting.mm#L256-L265) | ligada ao id do nó |
+| Um arquivo com problema derruba o resto do envio | [`DCMTKStoreSCU.mm:875–913`](https://github.com/horosproject/horos/blob/2a130506f2ae651fcd52becbd5469c107bbbf795/Horos/Sources/DCMTKStoreSCU.mm#L875-L913) | falha registrada por arquivo |
+
+## 6. Portabilidade para o Windows
 
 Ponto a ponto, o que é exclusivo do macOS e o que o substitui:
 
@@ -208,9 +398,25 @@ Ponto a ponto, o que é exclusivo do macOS e o que o substitui:
 | ZIP com senha | `zip -e` (ZipCrypto, fraco) | ZIP AES-256 (pyzipper) | `burn/prepare.py` |
 | Atalho ⌘ | `NSCommandKeyMask` | Ctrl (no Qt, `ControlModifier` já é ⌘ no Mac e Ctrl no Windows) | `gui/imageview.py` |
 | Eixo Y do mouse | Cocoa: cresce para cima | Qt: cresce para baixo; sinal invertido no arraste de janela | `gui/imageview.py` |
+| Listener DICOM | `dcmqrscp` do DCMTK modificado, uma thread por associação | pynetdicom, servidor com threads | `net/scp.py` |
+| Porta em uso | `SO_REUSEADDR`, que no macOS só reaproveita portas em TIME_WAIT | no Windows, `SO_REUSEADDR` deixaria outro processo abrir a mesma porta; o listener faz o bind sem a opção, como o `socket.create_server` do Python | `net/scp.py` |
+| Firewall | o macOS pergunta ao usuário na primeira conexão | regra de entrada no Firewall do Windows Defender pelo `netsh`, com elevação (UAC) a pedido do usuário | `platform/windows.py` |
+| Configuração de rede | NSUserDefaults (`SERVERS`, `AETITLE`, `AEPORT`) | `network.json` na pasta da base, gravado de forma atômica; importação do `DICOMNodes.plist` | `net/config.py`, `net/horos_nodes.py` |
+| TLS | identidade do Keychain exportada para `/tmp`, TLSv1 | arquivos PEM; sem CA própria, o repositório de certificados do Windows; TLS 1.2 ou mais | `net/scu.py`, `net/scp.py` |
+| Eco (Verify) | `echoscu` embutido, rodado com NSTask | C-ECHO no próprio processo | `net/scu.py` |
+| Cancelar recuperação | arquivo-sentinela `/tmp/kill_all_storescu` | C-CANCEL e, se ignorado, A-ABORT | `net/scu.py` |
+| Avisos de rede | NSUserNotification, ícone no Dock | barra de status, janela "Atividade de rede" e `logs\rede.log` | `gui/network.py`, `net/scp.py` |
 
 ### Limites impostos pelo Windows
 
+* **Firewall:** sem a regra de entrada, o Windows bloqueia o listener e o
+  C-MOVE falha no PACS com "destino inalcançável". A regra exige
+  administrador. O instalador não a cria sozinho; o botão nas
+  configurações de rede pede a elevação.
+* **Porta compartilhada:** no Windows, `SO_REUSEADDR` não serve para
+  reaproveitar porta em TIME_WAIT; ele deixa outro processo escutar na
+  mesma porta. O primeiro CI no Windows achou esse problema: o teste de
+  conflito de porta passava no Linux e falhava no runner Windows.
 * **Rótulo do volume:** o IMAPI2 aceita no máximo 15 caracteres, só A–Z,
   0–9 e `_` em ISO 9660 (`IMAPI_E_INVALID_VOLUME_NAME`). O nome sugerido
   `Archive-AAAAMMDD` do Horos tem 16, então virou `EXAMES_AAAAMMDD`.
@@ -228,20 +434,25 @@ Ponto a ponto, o que é exclusivo do macOS e o que o substitui:
   uma barra indeterminada durante a escrita. O Horos mostrava a
   porcentagem pelo painel do DiscRecordingUI.
 
-## 6. O que não foi portado
+## 7. O que não foi portado
 
-O Horos é uma estação de trabalho completa. O pedido era o visualizador e
-o gravador, e ficaram de fora:
+O Horos é uma estação de trabalho completa. O Horus cobre o visualizador,
+o gravador e a rede DICOM; ficaram de fora:
 
 * reconstruções MPR, CPR, 3D, renderização de volume e endoscopia (VTK/ITK);
-* rede DICOM: listener C-STORE, envio, Query/Retrieve (`DCMTKQueryRetrieveSCP`)
-  — o caminho natural é o `pynetdicom`;
+* da rede DICOM: recuperação por WADO, descoberta e anúncio por Bonjour
+  (`_dicom._tcp`), a base compartilhada do OsiriX na porta 8780, a janela
+  de Q/R automático, a recuperação "inteligente" no nível de imagem, o
+  agendamento e o pré-teste por C-FIND das regras de roteamento, envio
+  com compressão com perdas (JPEG, JPEG-LS, JPEG 2000 com perdas),
+  recompressão do que chega ao listener e sincronização da lista de nós
+  por URL;
 * fusão PET/CT e SUV, subtração, filtros de convolução;
 * ROIs além de régua e retângulo (polígonos, lápis, ângulo, 3D);
 * plugins, portal web, laudos, impressão DICOM, protocolos de exibição;
 * ícones no DICOMDIR (o Horos grava um por série) e laudos no disco.
 
-## 7. Como a implementação foi verificada
+## 8. Como a implementação foi verificada
 
 * **Testes automatizados** (`pytest`): rescale, janela, MONOCHROME1, RGB,
   multiquadro, grupos funcionais, medidas, base, importação por DICOMDIR,
@@ -263,6 +474,22 @@ o gravador, e ficaram de fora:
 * **Executável:** gerado com PyInstaller e submetido a `--self-test`, que
   codifica e decodifica JPEG 2000, monta DICOMDIR e ISO e carrega a camada
   de plataforma dentro do binário congelado.
+* **Rede, Horus contra Horus:** em 127.0.0.1, com associações de verdade,
+  os testes cobrem eco, envio (com SourceAE e duplicados), conversão de
+  sintaxe, C-FIND, C-GET, C-MOVE com sub-associação e conversão,
+  restrição a nós cadastrados, porta em uso, recuperação do que ficou em
+  INCOMING, envio com 4 associações, cancelamento de um PACS que trava
+  sem responder, e o auto-roteamento (filtros, novas tentativas, fila que
+  sobrevive a um reinício).
+* **Rede contra o DCMTK:** os clientes `echoscu`, `storescu`, `findscu`,
+  `getscu` e `movescu` contra o listener do Horus, e o cliente do Horus
+  contra o `storescp` e o `dcmqrscp`, o servidor de que o Horos derivou o
+  seu. Esses testes rodam no CI do Linux. No caminho, o `dcmqrscp
+  --single-process` do DCMTK 3.6.7 caiu com falha de segmentação depois
+  da primeira associação, inclusive com o `echoscu` do próprio DCMTK. Os
+  testes usam o modo padrão, com fork.
+* **Executável com rede:** o `--self-test` do `Horus.exe` abre o listener e
+  faz um C-ECHO em 127.0.0.1 dentro do binário congelado.
 * **Windows de verdade:** o workflow `.github/workflows/horus-windows.yml`
   roda os testes num runner Windows (59 aprovados), incluindo os que chamam
   o IMAPI2 pelo PowerShell e a Win32 de verdade

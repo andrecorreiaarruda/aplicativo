@@ -46,6 +46,37 @@ def no_modal(monkeypatch):
         monkeypatch.setattr(QMessageBox, name, staticmethod(lambda *a, **k: QMessageBox.StandardButton.Ok))
 
 
+# Serviços e janelas criados por teste. Ficar com eles vivos até o fim do
+# processo deixa threads de rede e conexões de sinal para a destruição do
+# interpretador, e o Qt pode cair ao encerrar ("shared QObject was deleted
+# directly", visto no CI do Linux). Cada teste desmonta tudo ao terminar.
+_SERVICES: list[NetworkService] = []
+_WINDOWS: list = []
+
+
+@pytest.fixture(autouse=True)
+def teardown_network(app):
+    yield
+    for service in _SERVICES:
+        service.stop()
+    for window in _WINDOWS:
+        window.close()
+        window.deleteLater()
+    _SERVICES.clear()
+    _WINDOWS.clear()
+    for widget in QApplication.topLevelWidgets():
+        widget.close()
+        widget.deleteLater()
+    for _ in range(5):
+        app.processEvents()
+
+
+def _browser(service: NetworkService) -> BrowserWindow:
+    window = BrowserWindow(service.db, Platform(), network=service)
+    _WINDOWS.append(window)
+    return window
+
+
 def _settle(runner, app, ms: int = 30000) -> None:
     runner.wait(ms)
     for _ in range(30):
@@ -69,6 +100,7 @@ def _service(tmp_path: Path, ae: str, nodes, port: int | None = None, enabled: b
     NetworkConfig(local(ae, port=port, listener_enabled=enabled), nodes).save(db.base_dir)
     service = NetworkService(db, Platform())
     service.start()
+    _SERVICES.append(service)
     return service
 
 
@@ -114,7 +146,7 @@ def test_query_and_retrieve_with_get(app, tmp_path):
     try:
         service = _service(tmp_path, "CLIENTE", [node("PACS", pacs.config.local.port, retrieve=RETRIEVE_GET)])
         try:
-            win = QueryWindow(service, BrowserWindow(service.db, Platform(), network=service).runner, lambda: None)
+            win = QueryWindow(service, _browser(service).runner, lambda: None)
             win.preset.setCurrentText("Qualquer data")
             win.name.setText("lima")
             win.search()
@@ -145,7 +177,7 @@ def test_retrieve_with_move_needs_and_uses_listener(app, tmp_path):
         service = _service(tmp_path, "CLIENTE", [node("PACS", pacs.config.local.port)], port=client_port)
         try:
             assert service.running
-            browser = BrowserWindow(service.db, Platform(), network=service)
+            browser = _browser(service)
             assert "Recebendo como CLIENTE" in browser.listener_label.text()
             browser.open_query()
             win = browser.query_window
@@ -172,7 +204,7 @@ def test_send_dialog(app, tmp_path):
     files = [write(make_dataset(instance_number=i + 1), tmp_path / "src" / f"{i}.dcm") for i in range(2)]
     with running_listener(tmp_path / "pacs", ae="PACS") as pacs:
         service = _service(tmp_path, "CLIENTE", [node("PACS", pacs.config.local.port)], enabled=False)
-        dialog = SendDialog([str(f) for f in files], service, BrowserWindow(service.db, Platform(), network=service).runner)
+        dialog = SendDialog([str(f) for f in files], service, _browser(service).runner)
         dialog.start()
         _settle(dialog.runner, app)
         assert dialog.status.text().startswith("2 de 2 imagem(ns) enviada(s)")
@@ -182,7 +214,7 @@ def test_send_dialog(app, tmp_path):
 
 def test_settings_dialog_validates_and_applies(app, tmp_path):
     service = _service(tmp_path, "CLIENTE", [], enabled=False)
-    dialog = NetworkSettingsDialog(service, BrowserWindow(service.db, Platform(), network=service).runner)
+    dialog = NetworkSettingsDialog(service, _browser(service).runner)
     dialog.ae.setText("NOME MUITO LONGO DEMAIS")  # 23 caracteres: corta em 16 no campo
     assert len(dialog.ae.text()) == 16
     dialog.ae.setText("ESTACAO1")
@@ -199,7 +231,7 @@ def test_settings_dialog_validates_and_applies(app, tmp_path):
     finally:
         service.stop()
 
-    dup = NetworkSettingsDialog(service, BrowserWindow(service.db, Platform(), network=service).runner)
+    dup = NetworkSettingsDialog(service, _browser(service).runner)
     dup.nodes.append(node("PACS", 105))  # AE title repetido
     dup._save()
     assert not dup.result()
@@ -217,7 +249,7 @@ def test_routing_rules_in_settings(app, tmp_path):
     pacs = node("PACS", 104)
     service = _service(tmp_path, "CLIENTE", [pacs], enabled=False)
     try:
-        dialog = NetworkSettingsDialog(service, BrowserWindow(service.db, Platform(), network=service).runner)
+        dialog = NetworkSettingsDialog(service, _browser(service).runner)
         rule_dialog = RuleDialog(dialog.nodes, parent=dialog)
         rule_dialog.name.setText("TC para o PACS")
         rule_dialog.modalities.setText("ct; mr")
@@ -236,7 +268,7 @@ def test_routing_rules_in_settings(app, tmp_path):
         assert back.routing_enabled and back.rules[0].destination == back.nodes[0].id
 
         # Remover o nó deixa a regra órfã: salvar avisa em vez de gravar.
-        orphan = NetworkSettingsDialog(service, BrowserWindow(service.db, Platform(), network=service).runner)
+        orphan = NetworkSettingsDialog(service, _browser(service).runner)
         orphan.nodes.clear()
         orphan._fill()
         assert orphan.rules_table.item(0, 2).text() == "(nó removido)"
