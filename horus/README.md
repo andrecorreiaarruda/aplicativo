@@ -157,5 +157,6 @@ horus/
 - texto gravado dentro da imagem (ultrassom, capturas de tela) não é
   removido pela anonimização;
 - a gravação física em CD/DVD e pendrive ainda precisa ser homologada num
-  Windows com gravador. O protocolo do script e a parte Win32 têm testes,
-  mas aqui eles rodaram com o processo simulado.
+  Windows com gravador e pendrive. No CI (Windows Server, sem gravador),
+  o script IMAPI2 e a listagem de volumes rodam de verdade, mas não há
+  mídia para gravar.

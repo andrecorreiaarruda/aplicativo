@@ -264,7 +264,11 @@ o gravador, e ficaram de fora:
   codifica e decodifica JPEG 2000, monta DICOMDIR e ISO e carrega a camada
   de plataforma dentro do binário congelado.
 * **Windows de verdade:** o workflow `.github/workflows/horus-windows.yml`
-  roda os testes num runner Windows, incluindo os que chamam o IMAPI2 e a
-  Win32 de verdade (`tests/test_windows_real.py`). Ele também gera o
-  `Horus.exe`, o autotesta e produz o instalador. A gravação física em
-  CD/DVD e pendrive precisa ser homologada numa máquina com gravador.
+  roda os testes num runner Windows (59 aprovados), incluindo os que chamam
+  o IMAPI2 pelo PowerShell e a Win32 de verdade
+  (`tests/test_windows_real.py`). Ele também gera o `Horus.exe`, o
+  autotesta e produz o instalador. A primeira execução no Windows achou um
+  defeito que o Linux não mostrava: os testes gravavam texto sem declarar a
+  codificação, e o Windows usa cp1252. A gravação física em CD/DVD e
+  pendrive precisa ser homologada numa máquina com gravador, porque o
+  runner não tem mídia.
