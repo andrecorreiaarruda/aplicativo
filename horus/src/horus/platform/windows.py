@@ -89,6 +89,26 @@ def describe_error(event: dict) -> str:
     return ERROR_MESSAGES.get(code, event.get("detail") or code or "falha na gravação")
 
 
+def firewall_command(port: int, program: str) -> str:
+    """Parâmetros do cmd.exe que trocam as regras de entrada do Horus.
+
+    Apaga as regras de entrada do executável (as de bloqueio criadas quando
+    o usuário cancelou o aviso do firewall e as de portas antigas) e cria a
+    regra de permissão para a porta TCP do listener. O código de saída é o
+    do último netsh, o que cria a regra. `/s /c` faz o cmd tirar só as
+    aspas externas, preservando as do caminho do programa.
+    """
+    port = int(port)
+    if '"' in program:
+        raise ValueError("caminho do programa com aspas")
+    delete = f'netsh advfirewall firewall delete rule name=all dir=in program="{program}"'
+    add = (
+        f'netsh advfirewall firewall add rule name="Horus DICOM ({port})" dir=in action=allow '
+        f'protocol=TCP localport={port} program="{program}" enable=yes'
+    )
+    return f'/s /c "{delete} & {add}"'
+
+
 class WindowsPlatform(Platform):
     name = "Windows"
     usb_label_max = 11
@@ -330,22 +350,58 @@ class WindowsPlatform(Platform):
             k.CloseHandle(handle)
 
     def allow_inbound_port(self, port: int, program: str) -> bool:
-        """Cria a regra de entrada no Firewall do Windows Defender.
+        """Libera a porta do listener no Firewall do Windows Defender.
 
-        A regra exige administrador; o `netsh` é aberto com o verbo "runas",
-        que mostra o pedido de elevação do UAC. A regra vale para o
-        executável do Horus e só para a porta TCP do listener.
+        Na primeira vez que o Horus escuta, o Windows pergunta se libera o
+        programa; um usuário sem administrador só pode cancelar, e aí o
+        Windows cria regras de BLOQUEIO para o executável, que vencem
+        qualquer regra de permissão. Por isso o comando, numa única
+        elevação (UAC), apaga as regras de entrada do programa — inclusive
+        as de bloqueio e a de uma porta antiga — e cria a nova. Devolve
+        True só se o netsh terminou com sucesso.
         """
         import ctypes
+        from ctypes import wintypes
 
-        rule = f"Horus DICOM ({port})"
-        params = (
-            f'advfirewall firewall add rule name="{rule}" dir=in action=allow '
-            f'protocol=TCP localport={int(port)} program="{program}" enable=yes'
-        )
-        # ShellExecuteW devolve um valor > 32 quando o processo foi iniciado.
-        result = ctypes.windll.shell32.ShellExecuteW(None, "runas", "netsh", params, None, 0)
-        return int(result) > 32
+        class SHELLEXECUTEINFOW(ctypes.Structure):
+            _fields_ = [
+                ("cbSize", wintypes.DWORD),
+                ("fMask", ctypes.c_ulong),
+                ("hwnd", wintypes.HWND),
+                ("lpVerb", wintypes.LPCWSTR),
+                ("lpFile", wintypes.LPCWSTR),
+                ("lpParameters", wintypes.LPCWSTR),
+                ("lpDirectory", wintypes.LPCWSTR),
+                ("nShow", ctypes.c_int),
+                ("hInstApp", wintypes.HINSTANCE),
+                ("lpIDList", ctypes.c_void_p),
+                ("lpClass", wintypes.LPCWSTR),
+                ("hkeyClass", wintypes.HKEY),
+                ("dwHotKey", wintypes.DWORD),
+                ("hIconOrMonitor", wintypes.HANDLE),
+                ("hProcess", wintypes.HANDLE),
+            ]
+
+        SEE_MASK_NOCLOSEPROCESS = 0x00000040
+        info = SHELLEXECUTEINFOW()
+        info.cbSize = ctypes.sizeof(info)
+        info.fMask = SEE_MASK_NOCLOSEPROCESS
+        info.lpVerb = "runas"
+        info.lpFile = "cmd.exe"
+        info.lpParameters = firewall_command(port, program)
+        info.nShow = 0  # SW_HIDE
+        shell32 = ctypes.WinDLL("shell32", use_last_error=True)
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        if not shell32.ShellExecuteExW(ctypes.byref(info)) or not info.hProcess:
+            return False  # UAC recusado (ERROR_CANCELLED) ou cmd.exe indisponível
+        try:
+            kernel32.WaitForSingleObject(info.hProcess, 60_000)
+            code = wintypes.DWORD()
+            if not kernel32.GetExitCodeProcess(info.hProcess, ctypes.byref(code)):
+                return False
+            return code.value == 0
+        finally:
+            kernel32.CloseHandle(info.hProcess)
 
     def open_folder(self, path: Path) -> None:
         os.startfile(str(path))  # type: ignore[attr-defined]  # só existe no Windows

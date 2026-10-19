@@ -53,7 +53,9 @@ def run(report: Path | None = None) -> int:
             ok = False
             lines.append(f"FALHA {name}\n{traceback.format_exc()}")
 
-    with tempfile.TemporaryDirectory() as tmp:
+    # ignore_cleanup_errors: no Windows, um arquivo ainda aberto (log, base)
+    # não pode ser apagado, e isso não deve derrubar o relatório.
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         work = Path(tmp)
 
         def codecs():

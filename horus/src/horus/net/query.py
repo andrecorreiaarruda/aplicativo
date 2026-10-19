@@ -204,13 +204,26 @@ def match_clause(expr: str, vr: str, value) -> tuple[str, list] | None:
 
 
 def _modalities_clause(value) -> tuple[str, list] | None:
+    """ModalitiesInStudy: o estudo tem alguma série de uma das modalidades.
+
+    Valores múltiplos ("CT\\MR") valem como OU. Um `*` sozinho é a
+    correspondência universal, e `*`/`?` funcionam como curinga numa
+    modalidade (CS aceita curinga, PS3.4 C.2.2.2.4) — alguns RIS mandam
+    ModalitiesInStudy="*" para dizer "qualquer uma".
+    """
     values = _values(value)
-    if not values:
+    if not values or any(set(v) == {"*"} for v in values):
         return None
     parts, args = [], []
     for v in values:
-        parts.append("('\\' || st.modalities || '\\') LIKE ? ESCAPE '|'")
-        args.append(f"%\\{v.replace('|', '||').replace('%', '|%').replace('_', '|_')}\\%")
+        if "*" in v or "?" in v:
+            parts.append(
+                "EXISTS (SELECT 1 FROM series s2 WHERE s2.study_id = st.id AND horus_fold(s2.modality) LIKE ? ESCAPE '\\')"
+            )
+            args.append(_folded_like(v))
+        else:
+            parts.append("('\\' || st.modalities || '\\') LIKE ? ESCAPE '|'")
+            args.append(f"%\\{v.replace('|', '||').replace('%', '|%').replace('_', '|_')}\\%")
     return "(" + " OR ".join(parts) + ")", args
 
 

@@ -161,7 +161,10 @@ def make_ae(local: LocalSettings) -> AE:
 
 
 def associate(ae: AE, node: Node, local: LocalSettings, contexts=None, ext_neg=None, evt_handlers=None):
-    tls_args = (client_ssl_context(node, local), node.host) if node.tls else None
+    try:
+        tls_args = (client_ssl_context(node, local), node.host) if node.tls else None
+    except (OSError, ssl.SSLError, ValueError) as exc:  # CA ou certificado sumiu, arquivo inválido
+        raise NetworkError(f"configuração TLS inválida para {node.describe()}: {exc}") from exc
     try:
         assoc = ae.associate(
             node.host,
@@ -245,6 +248,8 @@ class SendResult:
     # Arquivos aceitos pelo destino (com ou sem aviso). Num cancelamento, o
     # que não está aqui nem em `failed` não chegou a ser enviado.
     sent_paths: list[str] = field(default_factory=list)
+    # A associação nem chegou a ser aberta (destino fora do ar, recusou).
+    unreachable: bool = False
 
     @property
     def ok(self) -> bool:
@@ -293,6 +298,7 @@ def send(
         result.warnings += part.warnings
         result.failed.extend(part.failed)
         result.cancelled = result.cancelled or part.cancelled
+        result.unreachable = result.unreachable or part.unreachable
     return result
 
 
@@ -328,16 +334,22 @@ def _send_one(
             try:
                 assoc = associate(ae, node, local, contexts=contexts)
             except NetworkError as exc:
+                result.unreachable = True
                 for info in pending:
                     result.failed.append((info.path, str(exc)))
                 done += len(pending)
                 break
             dropped = False
+            sent_here = 0
             try:
                 while pending:
                     if cancelled():
                         result.cancelled = True
                         return result
+                    if not assoc.is_established:
+                        # O par encerrou depois de confirmar o arquivo anterior.
+                        dropped = True
+                        break
                     info = pending[0]
                     try:
                         ds = pydicom.dcmread(info.path, force=True)
@@ -349,17 +361,32 @@ def _send_one(
                         if progress:
                             progress(done, result.total, info.path)
                         continue
-                    status = assoc.send_c_store(ds)
+                    try:
+                        status = assoc.send_c_store(ds)
+                    except RuntimeError:
+                        # A associação caiu entre dois arquivos (o pynetdicom
+                        # recusa enviar numa associação encerrada).
+                        dropped = True
+                        break
+                    except Exception as exc:  # objeto que não codifica, sem SOPClassUID
+                        result.failed.append((info.path, f"não enviado: {exc}"))
+                        pending.pop(0)
+                        done += 1
+                        if progress:
+                            progress(done, result.total, info.path)
+                        continue
                     code = _code(status)
-                    if code is None or not assoc.is_established:
-                        # Associação caiu no meio: o arquivo corrente volta
-                        # para a fila e a associação é refeita uma vez.
+                    if code is None:
+                        # Sem resposta para este arquivo: ele volta para a
+                        # fila e a associação é refeita.
                         dropped = True
                         break
                     if code == 0x0000 or code in STORE_WARNINGS:
+                        # Confirmado, mesmo que a associação caia logo depois.
                         result.sent += 1
                         result.warnings += code != 0x0000
                         result.sent_paths.append(info.path)
+                        sent_here += 1
                     else:
                         comment = str(status.get("ErrorComment", ""))
                         result.failed.append((info.path, f"{_status_text(code)}{': ' + comment if comment else ''}"))
@@ -371,12 +398,17 @@ def _send_one(
                 if assoc.is_established:
                     assoc.release()
             if dropped:
-                if retried:
+                if sent_here:
+                    # Andou antes de cair (há PACS que encerram a cada N
+                    # objetos): reabre quantas vezes for preciso.
+                    retried = False
+                elif retried:
                     for info in pending:
                         result.failed.append((info.path, "a associação caiu durante o envio"))
                     done += len(pending)
                     break
-                retried = True
+                else:
+                    retried = True
     return result
 
 
@@ -402,6 +434,7 @@ def find(
     ae = make_ae(local)
     assoc = associate(ae, node, local, contexts=[build_context(sop)])
     result = FindResult()
+    limit_hit = 0.0
     try:
         cx_id = _context_id(assoc, sop, node)
         with _CancelWatch(assoc, cancelled, 1, cx_id) as watch:
@@ -413,13 +446,19 @@ def find(
                         break
                     raise NetworkError(f"{node.describe()} parou de responder durante a consulta")
                 if code in (0xFF00, 0xFF01):
-                    if ds is not None:
+                    if ds is not None and len(result.matches) < limit:
                         result.matches.append(ds)
-                    if len(result.matches) >= limit and not watch.sent:
-                        # O Horos para de guardar após o limite mas deixa o
-                        # PACS mandar o resto; aqui o C-CANCEL encerra a busca.
-                        watch.cancel()
-                        result.warning = f"consulta interrompida em {limit} resultados"
+                    if len(result.matches) >= limit:
+                        if not watch.sent:
+                            # O Horos para de guardar após o limite mas deixa o
+                            # PACS mandar o resto; aqui o C-CANCEL encerra a busca.
+                            watch.cancel()
+                            limit_hit = time.monotonic()
+                            result.warning = f"consulta interrompida em {limit} resultados"
+                        elif limit_hit and time.monotonic() - limit_hit > CANCEL_GRACE:
+                            # O PACS ignorou o C-CANCEL e continua mandando.
+                            assoc.abort()
+                            break
                     continue
                 if code == 0xFE00:
                     result.cancelled = cancelled()
@@ -459,13 +498,15 @@ def _retrieve_identifier(level: str, uids: list[str], study_uid: str = "", serie
     return ds
 
 
-def _run_retrieve(assoc, responses, result: RetrieveResult, node: Node, cancelled, cx_id: int, progress: ProgressFn | None) -> None:
+def _run_retrieve(assoc, responses, result: RetrieveResult, node: Node, cancelled, cx_id: int, progress: ProgressFn | None, timeout: int = 0) -> None:
     """Laço comum de respostas do C-MOVE e do C-GET."""
-    # Como o Horos (DIMSE bloqueante) e o movescu do DCMTK, a espera por
-    # respostas não tem prazo: um PACS com arquivo em fita ou "nearline"
-    # pode levar minutos até a primeira sub-operação, e as respostas
-    # pendentes são opcionais. O usuário continua podendo cancelar.
-    assoc.dimse_timeout = None
+    # O Horos (DIMSE bloqueante) e o movescu do DCMTK esperam as respostas
+    # sem prazo: um PACS com arquivo em fita ou "nearline" pode levar
+    # minutos até a primeira sub-operação, e as respostas pendentes são
+    # opcionais. Aqui o prazo é longo (retrieve_timeout, 10 min sem nenhuma
+    # mensagem) mas finito, para uma conexão que caiu sem aviso não prender
+    # a tarefa — e o programa, ao fechar — para sempre. 0 = sem prazo.
+    assoc.dimse_timeout = timeout or None
     with _CancelWatch(assoc, cancelled, 1, cx_id) as watch:
         for status, _ds in responses:
             code = _code(status)
@@ -473,7 +514,8 @@ def _run_retrieve(assoc, responses, result: RetrieveResult, node: Node, cancelle
                 if watch.sent:
                     result.message = "recuperação cancelada"
                     return
-                raise NetworkError(f"{node.describe()} parou de responder durante a recuperação")
+                waited = f" (nenhuma mensagem em {timeout} s)" if timeout else ""
+                raise NetworkError(f"{node.describe()} parou de responder durante a recuperação{waited}")
             _track(status, result, progress)
             if code == 0xFF00:
                 continue
@@ -523,7 +565,7 @@ def move(
     try:
         cx_id = _context_id(assoc, sop, node)
         responses = assoc.send_c_move(identifier, destination or local.ae_title, sop, msg_id=1, priority=PRIORITY_MEDIUM)
-        _run_retrieve(assoc, responses, result, node, cancelled, cx_id, progress)
+        _run_retrieve(assoc, responses, result, node, cancelled, cx_id, progress, local.retrieve_timeout)
     finally:
         if assoc.is_established:
             assoc.release()
@@ -586,7 +628,7 @@ def get(
     try:
         cx_id = _context_id(assoc, sop, node)
         responses = assoc.send_c_get(identifier, sop, msg_id=1, priority=PRIORITY_MEDIUM)
-        _run_retrieve(assoc, responses, result, node, cancelled, cx_id, progress)
+        _run_retrieve(assoc, responses, result, node, cancelled, cx_id, progress, local.retrieve_timeout)
     finally:
         if assoc.is_established:
             assoc.release()

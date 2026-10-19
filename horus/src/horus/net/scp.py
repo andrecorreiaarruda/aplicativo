@@ -36,6 +36,7 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 import pydicom
+from pydicom.dataset import Dataset
 from pynetdicom import AE, evt
 from pynetdicom.dsutils import encode_file_meta
 from pynetdicom.presentation import AllStoragePresentationContexts
@@ -73,6 +74,11 @@ QR_CLASSES = [
     StudyRootQueryRetrieveInformationModelGet,
 ]
 FAILED_DIR = "FALHAS"
+# Arquivos que falharam por motivo passageiro voltam à fila depois de
+# RETRY_IMPORT_SECONDS × tentativa (até 60 s), no máximo MAX_IMPORT_ATTEMPTS.
+RETRY_IMPORT_SECONDS = 5.0
+MAX_IMPORT_ATTEMPTS = 10
+GET_FOLDER_STALE_SECONDS = 15 * 60
 # AE impossível de ocorrer (tem espaço interno), usado para recusar todos
 # quando só nós cadastrados são aceitos e a lista está vazia: no pynetdicom
 # uma lista vazia em require_calling_aet significa "aceitar qualquer um".
@@ -131,6 +137,29 @@ class _ListenerServer(ThreadedAssociationServer):
         self.socket.bind(self.server_address)
         self.server_address = self.socket.getsockname()
 
+    # Com TLS, o pynetdicom faz o handshake dentro de get_request, na thread
+    # única que aceita conexões e sem prazo: uma conexão TCP que nunca manda
+    # o ClientHello (varredura de portas, verificação de um balanceador)
+    # travava o listener inteiro até o par desistir. Aqui o handshake vai
+    # para a thread da associação, com o prazo do ACSE.
+
+    def get_request(self):
+        client, address = self.socket.accept()
+        if self.ssl_context:
+            client.settimeout(self.ae.acse_timeout or 30)
+            client = self.ssl_context.wrap_socket(client, server_side=True, do_handshake_on_connect=False)
+        return client, address
+
+    def process_request_thread(self, request, client_address) -> None:
+        if isinstance(request, ssl.SSLSocket):
+            try:
+                request.do_handshake()
+                request.settimeout(None)
+            except (OSError, ValueError):  # inclui ssl.SSLError e socket.timeout
+                self.shutdown_request(request)
+                return
+        super().process_request_thread(request, client_address)
+
 
 class DicomListener:
     def __init__(self, database: Database, config: NetworkConfig, on_event: EventFn | None = None):
@@ -148,23 +177,38 @@ class DicomListener:
         self._flush = threading.Event()
         self._disk_checked_at = -1e9
         self._disk_low = False
-        self._logger = self._make_logger()
+        self._attempts: dict[Path, int] = {}
+        self._logger = logging.Logger("horus.net.listener", logging.INFO)
+        self._log_handler: logging.Handler | None = None
 
     # ------------------------------------------------------------ registro
 
-    def _make_logger(self) -> logging.Logger:
-        logger = logging.getLogger(f"horus.net.{id(self)}")
-        logger.setLevel(logging.INFO)
-        logger.propagate = False
+    def _open_log(self) -> None:
+        """Abre logs/rede.log enquanto o listener estiver ativo.
+
+        O arquivo é fechado em stop(): no Windows um arquivo aberto não pode
+        ser apagado nem renomeado, e um rede.log esquecido aberto impedia
+        apagar a pasta da base (e quebrava o autoteste do executável). O
+        logger é próprio deste listener, fora da árvore do `logging`, para
+        que dois listeners não somem handlers um no outro.
+        """
+        if self._log_handler is not None:
+            return
         log_dir = self.db.base_dir / "logs"
         try:
             log_dir.mkdir(exist_ok=True)
             handler = RotatingFileHandler(log_dir / "rede.log", maxBytes=1_000_000, backupCount=5, encoding="utf-8")
-            handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
-            logger.addHandler(handler)
         except OSError:
-            pass
-        return logger
+            return
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+        self._logger.addHandler(handler)
+        self._log_handler = handler
+
+    def _close_log(self) -> None:
+        if self._log_handler is not None:
+            self._logger.removeHandler(self._log_handler)
+            self._log_handler.close()
+            self._log_handler = None
 
     def _log(self, text: str, level: int = logging.INFO) -> None:
         self.activity.append((time.time(), text))
@@ -187,6 +231,7 @@ class DicomListener:
         local = self.config.local.validate()
         self.incoming.mkdir(parents=True, exist_ok=True)
         paths.mark_not_indexed(self.incoming)
+        self._open_log()
         ae = self._build_ae(local)
         handlers = [
             (evt.EVT_C_STORE, self._on_store),
@@ -209,6 +254,7 @@ class DicomListener:
                 server_class=_ListenerServer,
             )
         except OSError as exc:
+            self._close_log()
             raise ListenerError(
                 f"não foi possível abrir a porta {local.port}: {exc.strerror or exc}. "
                 "Outro programa (ou outra cópia do Horus) pode estar usando a porta."
@@ -232,6 +278,7 @@ class DicomListener:
             self._importer.join(timeout=30)
             self._importer = None
         self._log("listener parado")
+        self._close_log()
         self.on_event("state", {"running": False})
 
     def restart(self, config: NetworkConfig | None = None) -> None:
@@ -253,9 +300,12 @@ class DicomListener:
             ae.require_calling_aet = known or [_NOBODY]
         ae.add_supported_context(Verification)
         for cx in AllStoragePresentationContexts:
-            # scp_role=True aceita o papel de SCP proposto por quem pede
-            # C-GET (as imagens voltam para ele na mesma associação).
-            ae.add_supported_context(cx.abstract_syntax, ACCEPTED_SYNTAXES, scu_role=False, scp_role=True)
+            # Aceita o papel que o outro lado propuser na negociação de
+            # papéis, como o Horos: SCU (quem envia com C-STORE e manda o
+            # item de papel explícito) e SCP (quem pede C-GET e recebe as
+            # imagens na mesma associação). Com scu_role=False, um
+            # equipamento que mandava "SCU=1" tinha o contexto recusado.
+            ae.add_supported_context(cx.abstract_syntax, ACCEPTED_SYNTAXES, scu_role=True, scp_role=True)
         if local.qr_server_enabled:
             for sop in QR_CLASSES:
                 ae.add_supported_context(sop)
@@ -327,11 +377,25 @@ class DicomListener:
         return 0x0000
 
     def _recover_incoming(self) -> None:
-        """Retoma arquivos que ficaram em INCOMING num encerramento anterior."""
+        """Retoma arquivos que ficaram em INCOMING num encerramento anterior.
+
+        Inclui as pastas de C-GET (INCOMING/GET/<id>) abandonadas por uma
+        queda no meio da recuperação; uma pasta mexida nos últimos minutos
+        ainda pode ser de uma recuperação em andamento e fica para depois.
+        """
         for leftover in sorted(self.incoming.glob("*.part")):
             leftover.unlink(missing_ok=True)
         for leftover in sorted(self.incoming.glob("*.dcm")):
             self._queue.put(leftover)
+        stale = time.time() - GET_FOLDER_STALE_SECONDS
+        for folder in sorted(self.incoming.glob("GET/*")):
+            try:
+                if not folder.is_dir() or folder.stat().st_mtime > stale:
+                    continue
+            except OSError:
+                continue
+            for leftover in sorted(folder.glob("*.dcm")):
+                self._queue.put(leftover)
 
     def _import_loop(self) -> None:
         batch: list[Path] = []
@@ -340,6 +404,7 @@ class DicomListener:
             try:
                 item = self._queue.get(timeout=0.5)
                 if item is None:
+                    self._queue.task_done()
                     stop = True
                 else:
                     batch.append(item)
@@ -348,44 +413,94 @@ class DicomListener:
             except queue.Empty:
                 pass
             if batch and (stop or self._queue.empty() or len(batch) >= 200):
-                self._import_batch(batch)
+                try:
+                    self._import_batch(batch)
+                except Exception as exc:  # a thread de importação não pode morrer
+                    self._log(f"erro inesperado ao importar: {exc}", logging.ERROR)
+                    self._retry_later([p for p in batch if p.exists()])
+                finally:
+                    for _ in batch:
+                        self._queue.task_done()
                 batch = []
                 self._flush.clear()
+
+    def _retry_later(self, items: list[Path]) -> None:
+        """Devolve arquivos à fila depois de um tempo, até um limite.
+
+        Para o que falhou por motivo passageiro: base travada por uma
+        importação longa, arquivo preso pelo antivírus. O que passar do
+        limite fica em INCOMING e é retomado quando o listener reiniciar.
+        """
+        again = []
+        for path in items:
+            n = self._attempts.get(path, 0) + 1
+            if n > MAX_IMPORT_ATTEMPTS:
+                self._attempts.pop(path, None)
+                self._log(f"{path.name} continua em INCOMING após {MAX_IMPORT_ATTEMPTS} tentativas", logging.ERROR)
+                continue
+            self._attempts[path] = n
+            again.append(path)
+        if not again:
+            return
+        delay = min(60.0, RETRY_IMPORT_SECONDS * self._attempts[again[0]])
+
+        def requeue() -> None:
+            if self._server is not None:
+                for path in again:
+                    if path.exists():
+                        self._queue.put(path)
+
+        timer = threading.Timer(delay, requeue)
+        timer.daemon = True
+        timer.start()
 
     def _import_batch(self, batch: list[Path]) -> None:
         try:
             result = self.db.add_files(batch, move=True, origin=ORIGIN_RECEIVED)
         except Exception as exc:  # base travada, disco cheio
-            self._log(f"falha ao importar {len(batch)} objeto(s): {exc}", logging.ERROR)
+            # O que já foi confirmado saiu de INCOMING; o resto (inclusive o
+            # que add_files devolveu ao lugar) volta à fila mais tarde.
+            self._log(f"falha ao importar {len(batch)} objeto(s): {exc}; nova tentativa em instantes", logging.ERROR)
+            self._retry_later([p for p in batch if p.exists()])
             return
-        errors = {Path(p) for p, _ in result.errors}
+        for p in result.duplicate_paths:
+            # Só o que add_files disse ser duplicado é apagado: a base já tem
+            # a imagem. Nunca "o que sobrou".
+            try:
+                Path(p).unlink(missing_ok=True)
+                self.stats.duplicates += 1
+            except OSError as exc:
+                self._log(f"não foi possível apagar o duplicado {Path(p).name}: {exc}", logging.WARNING)
+        for p, msg in result.errors:
+            try:
+                self.failed_dir.mkdir(exist_ok=True)
+                shutil.move(str(p), self.failed_dir / Path(p).name)
+                self.stats.rejected_files += 1
+            except OSError as exc:
+                self._log(f"não foi possível mover {Path(p).name} para {FAILED_DIR}: {exc}", logging.WARNING)
+            self._log(f"objeto recebido recusado ({Path(p).name}): {msg}", logging.WARNING)
+        if result.transient:
+            self._retry_later([Path(p) for p, _ in result.transient if Path(p).exists()])
         for path in batch:
             if not path.exists():
-                continue  # movido para a base
-            if path in errors:
-                self.failed_dir.mkdir(exist_ok=True)
-                shutil.move(str(path), self.failed_dir / path.name)
-                self.stats.rejected_files += 1
-            else:
-                path.unlink(missing_ok=True)  # duplicado: a base já tem
-                self.stats.duplicates += 1
+                self._attempts.pop(path, None)
         self.stats.imported += result.added
         if result.added:
             self._log(f"{result.added} imagem(ns) recebida(s) importada(s)")
-        for p, msg in result.errors:
-            self._log(f"objeto recebido recusado ({Path(p).name}): {msg}", logging.WARNING)
         self.on_event("imported", {"added": result.added, "study_ids": sorted(result.study_ids)})
 
     def wait_idle(self, timeout: float = 10.0) -> bool:
-        """Espera a fila de importação esvaziar (testes e encerramento)."""
+        """Espera tudo o que chegou ser importado (testes e encerramento).
+
+        Conta as tarefas da fila, não o tamanho dela: um lote já tirado da
+        fila mas ainda dentro de add_files continua pendente.
+        """
         deadline = time.time() + timeout
         self._flush.set()
         while time.time() < deadline:
-            if self._queue.unfinished_tasks == 0 or self._queue.empty():
-                time.sleep(0.6)
-                if self._queue.empty():
-                    return True
-            time.sleep(0.1)
+            if self._queue.unfinished_tasks == 0:
+                return True
+            time.sleep(0.05)
         return False
 
     # ------------------------------------------------------------- C-FIND
@@ -466,13 +581,8 @@ class DicomListener:
             if event.is_cancelled:
                 yield 0xFE00, None
                 return
-            ds = pydicom.dcmread(item.path, force=True)
-            if accepted:
-                try:
-                    ds = prepare_for(ds, [pydicom.uid.UID(t) for t in accepted.get(item.sop_class_uid, [])], SEND_KEEP)
-                except ValueError:
-                    pass  # o pynetdicom contará a sub-operação como falha
-            yield 0xFF00, ds
+            syntaxes = [pydicom.uid.UID(t) for t in accepted.get(item.sop_class_uid, [])] if accepted else None
+            yield 0xFF00, self._sub_operation(item, syntaxes)
 
     def _on_get(self, event):
         caller = event.assoc.requestor.ae_title
@@ -484,9 +594,27 @@ class DicomListener:
             if event.is_cancelled:
                 yield 0xFE00, None
                 return
+            yield 0xFF00, self._sub_operation(item, accepted_for(event.assoc, item.sop_class_uid))
+
+    def _sub_operation(self, item: RetrieveItem, syntaxes) -> Dataset:
+        """O objeto de uma sub-operação, sem derrubar as outras.
+
+        Uma exceção dentro do gerador encerra o C-MOVE/C-GET inteiro com
+        0xC511/0xC411; uma imagem ilegível ou impossível de converter tem de
+        contar só como uma sub-operação com falha. Para isso vai um objeto
+        que o pynetdicom não consegue enviar: ele registra a falha e o UID
+        em FailedSOPInstanceUIDList e segue para a próxima.
+        """
+        try:
             ds = pydicom.dcmread(item.path, force=True)
+        except Exception as exc:  # arquivo sumiu, preso pelo antivírus, corrompido
+            self._log(f"imagem {item.sop_instance_uid} ilegível ({exc}); sub-operação com falha", logging.WARNING)
+            failed = Dataset()
+            failed.SOPInstanceUID = item.sop_instance_uid
+            return failed
+        if syntaxes is not None:
             try:
-                ds = prepare_for(ds, accepted_for(event.assoc, item.sop_class_uid), SEND_KEEP)
-            except ValueError:
-                pass  # classe não negociada: o pynetdicom contará falha
-            yield 0xFF00, ds
+                ds = prepare_for(ds, syntaxes, SEND_KEEP)
+            except Exception as exc:  # pixels que não decodificam, codec ausente
+                self._log(f"imagem {item.sop_instance_uid} não pôde ser convertida ({exc})", logging.WARNING)
+        return ds

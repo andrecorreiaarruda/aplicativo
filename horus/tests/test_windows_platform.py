@@ -122,3 +122,19 @@ def test_script_is_powershell51_safe():
     for number, line in enumerate(raw.decode("utf-8-sig").splitlines(), 1):
         code = line.split("#", 1)[0]
         assert code.isascii(), f"linha {number} com caractere não ASCII fora de comentário"
+
+
+def test_firewall_command_replaces_block_rules():
+    from horus.platform.windows import firewall_command
+
+    cmd = firewall_command(11112, r"C:\Program Files\Horus\Horus.exe")
+    # /s /c: o cmd tira só as aspas externas e preserva as do caminho.
+    assert cmd.startswith('/s /c "') and cmd.endswith('"')
+    delete, add = cmd[len('/s /c "'):-1].split(" & ")
+    # Primeiro apaga as regras de entrada do programa (as de bloqueio que o
+    # Windows cria quando o aviso do firewall é cancelado vencem qualquer
+    # permissão), depois cria a de permissão para a porta.
+    assert delete == r'netsh advfirewall firewall delete rule name=all dir=in program="C:\Program Files\Horus\Horus.exe"'
+    assert 'action=allow protocol=TCP localport=11112' in add and 'name="Horus DICOM (11112)"' in add
+    with pytest.raises(ValueError):
+        firewall_command(104, 'C:\\a"b.exe')

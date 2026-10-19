@@ -18,6 +18,7 @@ import os
 import shutil
 import sqlite3
 import threading
+import time
 import unicodedata
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -106,6 +107,30 @@ ORIGIN_IMPORTED = "imported"
 ORIGIN_GENERATED = "generated"
 
 
+# Uma importação confirma a cada COMMIT_EVERY imagens ou COMMIT_SECONDS.
+# O lock de escrita do SQLite fica preso do primeiro INSERT ao commit; uma
+# importação de CD inteira numa transação só fazia o listener esperar o
+# timeout de 30 s e falhar com "database is locked".
+COMMIT_EVERY = 50
+# Quanto uma conexão espera o lock de escrita de outra antes de desistir.
+BUSY_TIMEOUT = 30.0
+COMMIT_SECONDS = 1.0
+
+
+def _undo_file(target: Path, source: Path, moved: bool) -> None:
+    """Desfaz a cópia ou a movimentação de um arquivo de lote abortado."""
+    try:
+        if moved:
+            try:
+                os.replace(target, source)
+            except OSError:
+                shutil.move(str(target), source)
+        else:
+            Path(target).unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 def _strip_accents(text: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFKD", text) if not unicodedata.combining(c))
 
@@ -181,6 +206,11 @@ class ImportResult:
     study_ids: set[int] = field(default_factory=set)
     image_ids: list[int] = field(default_factory=list)
     origin: str = ORIGIN_IMPORTED
+    # Arquivos que a base já tinha (mesmo SOPInstanceUID) e arquivos que
+    # falharam por um motivo passageiro (arquivo preso pelo antivírus,
+    # disco momentaneamente indisponível): estes valem uma nova tentativa.
+    duplicate_paths: list[str] = field(default_factory=list)
+    transient: list[tuple[str, str]] = field(default_factory=list)
 
 
 def _text(ds: pydicom.Dataset, keyword: str) -> str:
@@ -227,7 +257,7 @@ class Database:
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
         """Uma conexão por uso: a importação roda em outra thread."""
-        conn = sqlite3.connect(self.sql_path, timeout=30)
+        conn = sqlite3.connect(self.sql_path, timeout=BUSY_TIMEOUT)
         conn.row_factory = sqlite3.Row
         # Comparação sem acentos nem maiúsculas, usada pelo C-FIND (o Horos
         # compara com [cd], case- e diacritic-insensitive, no Core Data).
@@ -292,79 +322,146 @@ class Database:
         chamou decidir o que fazer com eles.
         """
         result = ImportResult(origin=origin)
-        touched_series: set[int] = set()
         now = datetime.now().isoformat(timespec="seconds")
-        with self.connect() as db:
-            for n, path in enumerate(collect_files(sources, cancelled), start=1):
-                if cancelled():
-                    break
-                if progress:
-                    progress(n, str(path))
+        # O que está no lote ainda não confirmado: entra em `result` só no
+        # commit, e é desfeito (arquivos de volta ao lugar) se o lote falhar.
+        undo: list[tuple[Path, Path, bool]] = []
+        chunk_series: set[int] = set()
+        chunk_studies: set[int] = set()
+        chunk_ids: list[int] = []
+        chunk_start = time.monotonic()
+
+        def commit(db: sqlite3.Connection) -> None:
+            nonlocal chunk_start
+            if db.in_transaction:
+                self._refresh_counts(db, chunk_series, chunk_studies)
+                db.commit()
+            result.added += len(chunk_ids)
+            result.image_ids.extend(chunk_ids)
+            result.study_ids.update(chunk_studies)
+            undo.clear()
+            chunk_series.clear()
+            chunk_studies.clear()
+            chunk_ids.clear()
+            chunk_start = time.monotonic()
+
+        try:
+            with self.connect() as db:
                 try:
-                    ds = pydicom.dcmread(str(path), stop_before_pixels=True, force=True)
-                except Exception as exc:  # arquivo truncado, cabeçalho inválido
-                    result.errors.append((str(path), str(exc)))
-                    continue
-                meta = getattr(ds, "file_meta", None)
-                if meta is not None and str(meta.get("MediaStorageSOPClassUID", "")) == MEDIA_STORAGE_DIRECTORY:
-                    continue
-                sop_uid = _text(ds, "SOPInstanceUID")
-                series_uid = _text(ds, "SeriesInstanceUID")
-                study_uid = _text(ds, "StudyInstanceUID")
-                if not (sop_uid and series_uid and study_uid):
-                    result.errors.append((str(path), "sem SOP/Series/Study Instance UID"))
-                    continue
-                if db.execute("SELECT 1 FROM image WHERE sop_instance_uid = ?", (sop_uid,)).fetchone():
-                    result.duplicates += 1
-                    continue
-
-                stored = 0
-                target = Path(path)
-                if copy or move:
-                    target = self._unique_data_path()
-                    if move:
-                        # os.replace é atômico na mesma unidade; entre
-                        # unidades diferentes, shutil.move copia e apaga.
+                    for n, path in enumerate(collect_files(sources, cancelled), start=1):
+                        if cancelled():
+                            break
+                        if db.in_transaction and (len(chunk_ids) >= COMMIT_EVERY or time.monotonic() - chunk_start > COMMIT_SECONDS):
+                            commit(db)
+                        if progress:
+                            progress(n, str(path))
                         try:
-                            os.replace(path, target)
-                        except OSError:
-                            shutil.move(str(path), target)
-                    else:
-                        shutil.copyfile(path, target)
-                    stored = 1
-
-                study_id = self._upsert_study(db, ds, study_uid, now)
-                series_id = self._upsert_series(db, ds, study_id, series_uid)
-                transfer = ""
-                if meta is not None:
-                    transfer = str(meta.get("TransferSyntaxUID", ""))
-                cur = db.execute(
-                    """INSERT INTO image (series_id, sop_instance_uid, sop_class_uid,
-                           instance_number, number_of_frames, transfer_syntax_uid,
-                           path, stored_in_database, file_size, source_ae)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        series_id,
-                        sop_uid,
-                        _text(ds, "SOPClassUID"),
-                        _int(ds, "InstanceNumber"),
-                        _int(ds, "NumberOfFrames") or 1,
-                        transfer,
-                        str(target),
-                        stored,
-                        target.stat().st_size,
-                        str(meta.get("SourceApplicationEntityTitle", "") if meta is not None else "").strip(),
-                    ),
-                )
-                touched_series.add(series_id)
-                result.study_ids.add(study_id)
-                result.image_ids.append(int(cur.lastrowid))
-                result.added += 1
-            self._refresh_counts(db, touched_series, result.study_ids)
-        if result.added:
-            for hook in list(self.added_hooks):
-                hook(result)
+                            ds = pydicom.dcmread(str(path), stop_before_pixels=True, force=True)
+                        except OSError as exc:  # arquivo preso, sumiu, sem permissão
+                            result.transient.append((str(path), str(exc)))
+                            continue
+                        except Exception as exc:  # arquivo truncado, cabeçalho inválido
+                            result.errors.append((str(path), str(exc)))
+                            continue
+                        meta = getattr(ds, "file_meta", None)
+                        if meta is not None and str(meta.get("MediaStorageSOPClassUID", "")) == MEDIA_STORAGE_DIRECTORY:
+                            continue
+                        sop_uid = _text(ds, "SOPInstanceUID")
+                        series_uid = _text(ds, "SeriesInstanceUID")
+                        study_uid = _text(ds, "StudyInstanceUID")
+                        if not (sop_uid and series_uid and study_uid):
+                            result.errors.append((str(path), "sem SOP/Series/Study Instance UID"))
+                            continue
+                        if not db.in_transaction:
+                            # O lock de escrita é pedido antes de mexer em
+                            # qualquer arquivo: se a base estiver ocupada, a
+                            # espera (e uma eventual falha) acontece aqui.
+                            db.execute("BEGIN IMMEDIATE")
+                        if db.execute("SELECT 1 FROM image WHERE sop_instance_uid = ?", (sop_uid,)).fetchone():
+                            result.duplicates += 1
+                            result.duplicate_paths.append(str(path))
+                            continue
+                        step = self._add_one(db, ds, meta, Path(path), copy or move, move, now, study_uid, series_uid, sop_uid)
+                        if isinstance(step, Exception):
+                            bucket = result.transient if isinstance(step, OSError) else result.errors
+                            bucket.append((str(path), f"não importado: {step}"))
+                            continue
+                        image_id, series_id, study_id, done = step
+                        if done is not None:
+                            undo.append(done)
+                        chunk_ids.append(image_id)
+                        chunk_series.add(series_id)
+                        chunk_studies.add(study_id)
+                    commit(db)
+                except BaseException:
+                    db.rollback()
+                    for target, source, moved in reversed(undo):
+                        _undo_file(target, source, moved)
+                    raise
+        finally:
+            # O que já foi confirmado segue adiante (auto-roteamento) mesmo
+            # quando um lote posterior falhou.
+            if result.added:
+                for hook in list(self.added_hooks):
+                    hook(result)
         return result
+
+    def _add_one(self, db, ds, meta, path: Path, store: bool, move: bool, now: str, study_uid: str, series_uid: str, sop_uid: str):
+        """Linhas de uma imagem e, depois delas, o arquivo no lugar.
+
+        Devolve (image_id, series_id, study_id, desfazer) ou, se esta
+        imagem falhou, a exceção — sem afetar as outras do lote. Um erro do
+        próprio SQLite (base travada, E/S) não é desta imagem: sobe.
+        """
+        target = self._unique_data_path() if store else path
+        db.execute("SAVEPOINT imagem")
+        done = None
+        try:
+            study_id = self._upsert_study(db, ds, study_uid, now)
+            series_id = self._upsert_series(db, ds, study_id, series_uid)
+            cur = db.execute(
+                """INSERT INTO image (series_id, sop_instance_uid, sop_class_uid,
+                       instance_number, number_of_frames, transfer_syntax_uid,
+                       path, stored_in_database, file_size, source_ae)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    series_id,
+                    sop_uid,
+                    _text(ds, "SOPClassUID"),
+                    _int(ds, "InstanceNumber"),
+                    _int(ds, "NumberOfFrames") or 1,
+                    str(meta.get("TransferSyntaxUID", "")) if meta is not None else "",
+                    str(target),
+                    1 if store else 0,
+                    path.stat().st_size,
+                    str(meta.get("SourceApplicationEntityTitle", "") if meta is not None else "").strip(),
+                ),
+            )
+            if store:
+                if move:
+                    # os.replace é atômico na mesma unidade; entre unidades
+                    # diferentes, shutil.move copia e apaga.
+                    try:
+                        os.replace(path, target)
+                    except OSError:
+                        shutil.move(str(path), target)
+                else:
+                    shutil.copyfile(path, target)
+                done = (target, path, move)
+            db.execute("RELEASE imagem")
+            return int(cur.lastrowid), series_id, study_id, done
+        except sqlite3.OperationalError:
+            if done is not None:
+                _undo_file(*done)
+            raise
+        except Exception as exc:  # valor fora do intervalo, arquivo preso pelo antivírus
+            db.execute("ROLLBACK TO imagem")
+            db.execute("RELEASE imagem")
+            if done is not None:
+                _undo_file(*done)
+            elif store:
+                Path(target).unlink(missing_ok=True)
+            return exc
 
     def _upsert_study(self, db: sqlite3.Connection, ds: pydicom.Dataset, uid: str, now: str) -> int:
         row = db.execute("SELECT id FROM study WHERE study_instance_uid = ?", (uid,)).fetchone()

@@ -15,8 +15,9 @@ import os
 import re
 import socket
 import tempfile
+import time
 import uuid
-from dataclasses import asdict, dataclass, field, fields
+from dataclasses import MISSING, asdict, dataclass, field, fields
 from pathlib import Path
 
 CONFIG_FILE = "network.json"
@@ -143,6 +144,9 @@ class LocalSettings:
     dimse_timeout: int = 40
     network_timeout: int = 60
     connection_timeout: int = 10
+    # Espera máxima sem nenhuma mensagem num C-MOVE/C-GET (0 = sem prazo,
+    # como o Horos). Ver scu._run_retrieve.
+    retrieve_timeout: int = 600
     max_pdu: int = 116794
     # Limite de respostas de um C-FIND de estudo/série (maximumNumberOf-
     # CFindObjects no Horos); no nível de imagem o limite é bem maior.
@@ -159,6 +163,8 @@ class LocalSettings:
         for name in ("max_associations", "acse_timeout", "dimse_timeout", "network_timeout", "connection_timeout", "max_find_results"):
             if int(getattr(self, name)) < 1:
                 raise ConfigError(f"{name} precisa ser positivo")
+        if int(self.retrieve_timeout) < 0:
+            raise ConfigError("retrieve_timeout não pode ser negativo (0 = sem prazo)")
         if self.tls_enabled and not (self.tls_cert_file and self.tls_key_file):
             raise ConfigError("TLS ligado exige certificado e chave do listener")
         return self
@@ -219,9 +225,40 @@ class RoutingRule:
         return ", ".join(parts) or "todas as imagens novas"
 
 
-def _from_dict(cls, data: dict):
-    known = {f.name for f in fields(cls)}
-    return cls(**{k: v for k, v in data.items() if k in known})
+def _from_dict(cls, data):
+    """Instância a partir do JSON, tolerante a campos novos e a tipos frouxos.
+
+    Campos desconhecidos (de versões mais novas) são ignorados. Números e
+    booleanos escritos como texto ("104", "true") são convertidos para o tipo
+    do valor padrão do campo; o que não converte vira ConfigError, em vez de
+    estourar mais adiante (uma porta em texto derrubava o diálogo).
+    """
+    if not isinstance(data, dict):
+        raise ConfigError(f"esperado um objeto para {cls.__name__}, encontrado {type(data).__name__}")
+    values = {}
+    for f in fields(cls):
+        if f.name not in data:
+            continue
+        value = data[f.name]
+        default = f.default if f.default is not MISSING else (f.default_factory() if f.default_factory is not MISSING else None)
+        try:
+            if isinstance(default, bool):
+                value = value.strip().lower() in ("1", "true", "sim", "yes") if isinstance(value, str) else bool(value)
+            elif isinstance(default, int):
+                value = int(value)
+            elif isinstance(default, str) or (default is None and f.type == "str"):
+                value = "" if value is None else str(value)
+            elif isinstance(default, list):
+                if not isinstance(value, list):
+                    raise TypeError("esperada uma lista")
+                value = [str(v) for v in value]
+        except (TypeError, ValueError) as exc:
+            raise ConfigError(f"valor inválido em {cls.__name__}.{f.name}: {value!r} ({exc})") from exc
+        values[f.name] = value
+    try:
+        return cls(**values)
+    except TypeError as exc:  # campo obrigatório ausente
+        raise ConfigError(f"{cls.__name__} incompleto na configuração: {exc}") from exc
 
 
 @dataclass
@@ -264,6 +301,11 @@ class NetworkConfig:
 
     @classmethod
     def from_dict(cls, data: dict) -> NetworkConfig:
+        if not isinstance(data, dict):
+            raise ConfigError("a configuração de rede não é um objeto JSON")
+        for key in ("nodes", "rules"):
+            if not isinstance(data.get(key, []), list):
+                raise ConfigError(f"'{key}' precisa ser uma lista")
         local = _from_dict(LocalSettings, data.get("local", {}))
         nodes = [_from_dict(Node, n) for n in data.get("nodes", [])]
         rules = [_from_dict(RoutingRule, r) for r in data.get("rules", [])]
@@ -276,9 +318,18 @@ class NetworkConfig:
             return cls()
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            raise ConfigError(f"configuração de rede ilegível ({path}): {exc}") from exc
-        return cls.from_dict(data)
+            return cls.from_dict(data)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ConfigError) as exc:
+            # Guarda o arquivo estragado ao lado, com outro nome: o programa
+            # segue com a configuração padrão, e o próximo "Salvar" não
+            # apaga a lista de nós que talvez ainda dê para recuperar.
+            kept = path.with_name(f"{CONFIG_FILE}.ilegivel-{time.strftime('%Y%m%d-%H%M%S')}")
+            try:
+                os.replace(path, kept)
+                where = f" O arquivo foi guardado como {kept.name}."
+            except OSError:
+                where = ""
+            raise ConfigError(f"configuração de rede ilegível ({path}): {exc}.{where}") from exc
 
     def save(self, base_dir: Path) -> Path:
         self.validate()
@@ -290,6 +341,11 @@ class NetworkConfig:
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as fh:
                 json.dump(self.to_dict(), fh, ensure_ascii=False, indent=2)
+                # Sem isto, uma queda de energia logo depois de salvar pode
+                # deixar um network.json do tamanho certo e cheio de zeros:
+                # o NTFS registra o rename antes de os dados chegarem ao disco.
+                fh.flush()
+                os.fsync(fh.fileno())
             os.replace(tmp, path)
         except BaseException:
             Path(tmp).unlink(missing_ok=True)

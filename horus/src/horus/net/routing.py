@@ -72,6 +72,8 @@ class Router:
         self.on_event = on_event or (lambda kind, data: None)
         self._logger = logging.getLogger("horus.net.routing")
         self._wake = threading.Event()
+        # Um Event de parada por thread: a thread antiga, ainda presa num
+        # envio, nunca vê o sinal "limpo" que um start() novo daria.
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._busy = threading.Lock()
@@ -83,20 +85,28 @@ class Router:
     def start(self) -> None:
         if self._thread is not None:
             return
-        self._stop.clear()
+        self._stop = threading.Event()
         if self.on_added not in self.db.added_hooks:
             self.db.added_hooks.append(self.on_added)
-        self._thread = threading.Thread(target=self._run, name="horus-roteamento", daemon=True)
+        self._thread = threading.Thread(target=self._run, args=(self._stop,), name="horus-roteamento", daemon=True)
         self._thread.start()
 
-    def stop(self) -> None:
+    def stop(self, wait: float = 2.0) -> None:
+        """Para a thread de envio sem prender quem chamou.
+
+        Um envio em andamento só é interrompido entre um arquivo e outro, e
+        abrir uma associação com um destino travado pode levar o ACSE
+        timeout inteiro. Quem chama (a interface, ao salvar as
+        configurações) espera no máximo `wait`; a thread antiga termina
+        sozinha, e o que ela não enviou continua na fila da base.
+        """
         if self.on_added in self.db.added_hooks:
             self.db.added_hooks.remove(self.on_added)
         if self._thread is None:
             return
         self._stop.set()
         self._wake.set()
-        self._thread.join(timeout=30)
+        self._thread.join(timeout=wait)
         self._thread = None
 
     def _log(self, text: str, level: int = logging.INFO) -> None:
@@ -174,19 +184,20 @@ class Router:
 
     # ------------------------------------------------------------ envio
 
-    def _run(self) -> None:
-        while not self._stop.is_set():
+    def _run(self, stop: threading.Event) -> None:
+        while not stop.is_set():
             try:
-                self.process_due()
+                self.process_due(stop)
             except Exception as exc:
                 self._log(f"erro inesperado: {exc}", logging.ERROR)
             self._wake.wait(INTERVAL)
             self._wake.clear()
 
-    def process_due(self) -> int:
+    def process_due(self, stop: threading.Event | None = None) -> int:
         """Envia o que está vencido na fila; devolve quantas imagens foram."""
         from . import scu
 
+        stop = stop or self._stop
         if not self._busy.acquire(blocking=False):
             return 0
         try:
@@ -207,12 +218,19 @@ class Router:
             groups: dict[tuple[str, str], list] = {}
             for row in rows:
                 groups.setdefault((row["node_id"], row["patient_id"]), []).append(row)
+            unreachable: dict[str, str] = {}
             for (node_id, patient_id), items in groups.items():
-                if self._stop.is_set():
+                if stop.is_set():
                     break
                 node = config.node_by_id(node_id)
                 if node is None:
                     self._fail(items, "o nó de destino foi removido", final=True)
+                    continue
+                if node_id in unreachable:
+                    # Já não respondeu neste ciclo: os outros pacientes desse
+                    # nó esperam a próxima tentativa sem gastar outro timeout
+                    # de conexão cada um (o que atrasava os demais destinos).
+                    self._fail(items, unreachable[node_id])
                     continue
                 present = [r for r in items if Path(r["path"]).exists()]
                 missing = [r for r in items if not Path(r["path"]).exists()]
@@ -221,7 +239,14 @@ class Router:
                 if not present:
                     continue
                 # Uma associação por paciente, como o Horos.
-                result = scu.send(config.local, node, [r["path"] for r in present], cancelled=self._stop.is_set)
+                try:
+                    result = scu.send(config.local, node, [r["path"] for r in present], cancelled=stop.is_set)
+                except Exception as exc:  # um grupo com problema não trava a fila inteira
+                    self._fail(present, f"erro no envio: {exc}")
+                    self._log(f"erro ao enviar a {node.describe()}: {exc}", logging.ERROR)
+                    continue
+                if result.unreachable and not result.sent_paths and result.failed:
+                    unreachable[node_id] = result.failed[0][1]
                 sent = set(result.sent_paths)
                 errors = dict(result.failed)
                 done = [r for r in present if r["path"] in sent]

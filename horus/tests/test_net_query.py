@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 
 import pytest
@@ -94,6 +95,20 @@ def test_modalities_in_study(engine):
     assert hits[0].ModalitiesInStudy == "MR"
     both = list(engine.find(q("STUDY", ModalitiesInStudy=["CT", "DX"], AccessionNumber="")))
     assert {r.AccessionNumber for r in both} == {"A100", "A300"}
+
+
+def test_modalities_in_study_universal_and_wildcards(engine):
+    def found(value):
+        return {str(r.AccessionNumber) for r in engine.find(q("STUDY", ModalitiesInStudy=value, AccessionNumber=""))}
+
+    # "*" sozinho é a correspondência universal; curingas valem por modalidade.
+    assert found("*") == {"A100", "A200", "A300"}
+    assert found("C*") == {"A100"}
+    assert found("?R") == {"A200"}
+    assert found(["D?", "MR"]) == {"A200", "A300"}
+    with warnings.catch_warnings():  # "ct" não é um CS válido; o pydicom avisa
+        warnings.simplefilter("ignore", UserWarning)
+        assert found("ct") == {"A100"}  # sem diferenciar maiúsculas, como o Horos ([cd])
 
 
 def test_uid_list_and_series_level(engine):

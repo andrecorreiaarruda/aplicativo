@@ -135,3 +135,22 @@ def test_import_rejects_non_list(tmp_path):
     (tmp_path / "y.plist").write_text("lixo", encoding="utf-8")
     with pytest.raises(ConfigError):
         load_horos_nodes(tmp_path / "y.plist")
+
+
+def test_loose_types_and_bad_structure(tmp_path):
+    data = {
+        "local": {"ae_title": "EU", "port": "4242", "listener_enabled": "false"},
+        "nodes": [{"name": "P", "ae_title": 123, "host": "h", "port": "104", "query": 1}],
+    }
+    (tmp_path / "network.json").write_text(json.dumps(data), encoding="utf-8")
+    c = NetworkConfig.load(tmp_path)
+    assert c.local.port == 4242 and c.local.listener_enabled is False
+    assert c.nodes[0].port == 104 and c.nodes[0].ae_title == "123" and c.nodes[0].query is True
+
+    for broken in ({"nodes": {}}, {"local": []}, {"nodes": [{"name": "sem host"}]}, {"local": {"port": "abc"}}, []):
+        (tmp_path / "network.json").write_text(json.dumps(broken), encoding="utf-8")
+        with pytest.raises(ConfigError):
+            NetworkConfig.load(tmp_path)
+        # O arquivo estragado é guardado com outro nome, nunca sobrescrito.
+        assert not (tmp_path / "network.json").exists()
+    assert len(list(tmp_path.glob("network.json.ilegivel-*"))) >= 1
