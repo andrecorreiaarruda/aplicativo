@@ -21,9 +21,11 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 from horus.database import Database
 from horus.gui.browser import BrowserWindow
 from horus.gui.network import (
+    ActivityDialog,
     NetworkService,
     NetworkSettingsDialog,
     QueryWindow,
+    RuleDialog,
     SendDialog,
     date_range_for,
     merge_studies,
@@ -209,3 +211,40 @@ def test_port_conflict_is_reported(app, tmp_path):
         assert not service.running
         assert "porta" in service.listener_error
         assert "parado" in service.status_text()
+
+
+def test_routing_rules_in_settings(app, tmp_path):
+    pacs = node("PACS", 104)
+    service = _service(tmp_path, "CLIENTE", [pacs], enabled=False)
+    try:
+        dialog = NetworkSettingsDialog(service, BrowserWindow(service.db, Platform(), network=service).runner)
+        rule_dialog = RuleDialog(dialog.nodes, parent=dialog)
+        rule_dialog.name.setText("TC para o PACS")
+        rule_dialog.modalities.setText("ct; mr")
+        rule_dialog.calling_ae.setText("TOMO1")
+        rule_dialog._accept()
+        assert rule_dialog.result() and rule_dialog.result_rule.modalities == ["CT", "MR"]
+        dialog.rules.append(rule_dialog.result_rule)
+        dialog.routing.setChecked(True)
+        dialog._fill()
+        assert dialog.rules_table.item(0, 2).text() == "PACS"
+        assert "CT/MR" in dialog.rules_table.item(0, 3).text()
+        dialog._save()
+        assert dialog.result()
+        service.apply(dialog.result_config)
+        back = NetworkConfig.load(service.db.base_dir)
+        assert back.routing_enabled and back.rules[0].destination == back.nodes[0].id
+
+        # Remover o nó deixa a regra órfã: salvar avisa em vez de gravar.
+        orphan = NetworkSettingsDialog(service, BrowserWindow(service.db, Platform(), network=service).runner)
+        orphan.nodes.clear()
+        orphan._fill()
+        assert orphan.rules_table.item(0, 2).text() == "(nó removido)"
+        orphan._save()
+        assert not orphan.result()
+
+        activity = ActivityDialog(service)
+        assert "ligado" in activity.queue_label.text() and "0 imagem(ns) na fila" in activity.queue_label.text()
+        activity.done(0)
+    finally:
+        service.stop()

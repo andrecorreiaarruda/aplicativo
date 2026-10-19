@@ -49,7 +49,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import paths
-from ..database import Database
+from ..database import ORIGIN_RECEIVED, Database
 from ..net import scu
 from ..net.config import (
     RETRIEVE_GET,
@@ -59,12 +59,16 @@ from ..net.config import (
     SEND_J2K,
     SEND_KEEP,
     SEND_RLE,
+    ROUTE_ALL,
+    ROUTE_RETRIES,
     ConfigError,
     LocalSettings,
     NetworkConfig,
     Node,
+    RoutingRule,
 )
 from ..net.horos_nodes import load_horos_nodes, save_horos_nodes
+from ..net.routing import Router
 from ..net.scp import DicomListener, ListenerError
 from ..platform import Platform
 from .tasks import Task, TaskRunner
@@ -77,6 +81,12 @@ SYNTAX_LABELS = {
     SEND_RLE: "RLE sem perdas",
 }
 RETRIEVE_LABELS = {RETRIEVE_MOVE: "C-MOVE", RETRIEVE_GET: "C-GET"}
+ORIGIN_LABELS = {
+    ROUTE_ALL: "Todas as imagens novas",
+    "received": "Recebidas pela rede",
+    "imported": "Importadas de arquivos ou discos",
+    "generated": "Geradas pelo Horus (anonimizadas)",
+}
 # As caixas de modalidade da janela Query do Horos (Query.xib).
 MODALITIES = ("CR", "CT", "MG", "XA", "RF", "NM", "DX", "ES", "PT", "SR", "SC", "MR", "AU", "OT", "RG", "DR", "XC", "VL", "US")
 
@@ -108,7 +118,8 @@ def local_addresses() -> list[str]:
 
 
 class NetworkService(QObject):
-    """Configuração + listener, com eventos levados à thread da interface."""
+    """Configuração, listener e auto-roteamento, com eventos levados à
+    thread da interface."""
 
     log = Signal(str)
     imported = Signal(dict)
@@ -126,6 +137,7 @@ class NetworkService(QObject):
             self.config_error = str(exc)
         self.listener: DicomListener | None = None
         self.listener_error = ""
+        self.router = Router(database, lambda: self.config, self._on_event)
 
     def _on_event(self, kind: str, data: dict) -> None:
         # Chamado nas threads do pynetdicom; os sinais Qt atravessam para a
@@ -139,6 +151,9 @@ class NetworkService(QObject):
 
     def start(self) -> None:
         self.listener_error = ""
+        # O roteamento independe do listener: imagens importadas de disco
+        # também passam pelas regras.
+        self.router.start()
         if not self.config.local.listener_enabled:
             self.state.emit(False)
             return
@@ -153,6 +168,7 @@ class NetworkService(QObject):
             self.state.emit(False)
 
     def stop(self) -> None:
+        self.router.stop()
         if self.listener is not None:
             self.listener.stop()
 
@@ -272,6 +288,77 @@ class NodeDialog(QDialog):
         self.accept()
 
 
+class RuleDialog(QDialog):
+    """Uma regra de auto-roteamento (a folha "Routing rule" do Horos)."""
+
+    def __init__(self, nodes: list[Node], rule: RoutingRule | None = None, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Regra de auto-roteamento")
+        self.setMinimumWidth(460)
+        r = rule or RoutingRule()
+        self._id = r.id
+        self.name = QLineEdit(r.name)
+        self.enabled = QCheckBox("Regra ativa")
+        self.enabled.setChecked(r.enabled)
+        self.destination = QComboBox()
+        for n in nodes:
+            if n.send or n.id == r.destination:
+                self.destination.addItem(n.describe(), n.id)
+        self.destination.setCurrentIndex(max(0, self.destination.findData(r.destination)))
+        self.origin = QComboBox()
+        for key, label in ORIGIN_LABELS.items():
+            self.origin.addItem(label, key)
+        self.origin.setCurrentIndex(max(0, self.origin.findData(r.origin)))
+        self.modalities = QLineEdit(", ".join(r.modalities))
+        self.modalities.setPlaceholderText("ex.: CT, MR — vazio = todas")
+        self.calling_ae = QLineEdit(r.calling_ae)
+        self.calling_ae.setMaxLength(16)
+        self.calling_ae.setPlaceholderText("AE title de quem enviou — vazio = qualquer um")
+        self.description = QLineEdit(r.description)
+        self.description.setPlaceholderText("trecho da descrição do exame — vazio = qualquer uma")
+        self.retries = QComboBox()
+        for n in ROUTE_RETRIES:
+            self.retries.addItem("nenhuma" if n == 0 else f"{n} tentativas", n)
+        self.retries.setCurrentIndex(max(0, self.retries.findData(r.retries)))
+
+        form = QFormLayout()
+        form.addRow("Nome:", self.name)
+        form.addRow(self.enabled)
+        form.addRow("Enviar para:", self.destination)
+        form.addRow("Imagens:", self.origin)
+        form.addRow("Modalidades:", self.modalities)
+        form.addRow("Vindas do AE:", self.calling_ae)
+        form.addRow("Descrição contém:", self.description)
+        form.addRow("Se falhar, repetir:", self.retries)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(self._accept)
+        buttons.rejected.connect(self.reject)
+        layout = QVBoxLayout(self)
+        layout.addLayout(form)
+        layout.addWidget(buttons)
+        self._nodes = nodes
+        self.result_rule: RoutingRule | None = None
+
+    def _accept(self) -> None:
+        rule = RoutingRule(
+            name=self.name.text(),
+            destination=self.destination.currentData() or "",
+            enabled=self.enabled.isChecked(),
+            origin=self.origin.currentData(),
+            modalities=[m for m in self.modalities.text().replace(";", ",").replace(" ", ",").split(",") if m],
+            calling_ae=self.calling_ae.text(),
+            description=self.description.text(),
+            retries=int(self.retries.currentData()),
+            id=self._id,
+        )
+        try:
+            self.result_rule = rule.validate(self._nodes)
+        except ConfigError as exc:
+            QMessageBox.warning(self, "Regra de auto-roteamento", str(exc))
+            return
+        self.accept()
+
+
 class NetworkSettingsDialog(QDialog):
     def __init__(self, service: NetworkService, runner: TaskRunner, parent=None):
         super().__init__(parent)
@@ -369,9 +456,42 @@ class NetworkSettingsDialog(QDialog):
         nodes_layout.addLayout(buttons_row)
         nodes_layout.addWidget(self.echo_status)
 
+        # --- auto-roteamento
+        self.rules: list[RoutingRule] = cfg.rules
+        self.routing = QCheckBox("Rotear automaticamente as imagens novas")
+        self.routing.setChecked(cfg.routing_enabled)
+        self.rules_table = QTableWidget(0, 4)
+        self.rules_table.setHorizontalHeaderLabels(["Ativa", "Regra", "Destino", "Filtro"])
+        rh = self.rules_table.horizontalHeader()
+        rh.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        rh.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self.rules_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.rules_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.rules_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.rules_table.doubleClicked.connect(lambda *_: self._edit_rule())
+        rules_row = QHBoxLayout()
+        for text, slot in (("Adicionar…", self._add_rule), ("Editar…", self._edit_rule), ("Remover", self._remove_rule)):
+            b = QPushButton(text)
+            b.clicked.connect(slot)
+            rules_row.addWidget(b)
+        rules_row.addStretch(1)
+        rules_hint = QLabel(
+            "Cada imagem nova que passar no filtro de uma regra ativa é enviada ao nó "
+            "da regra, um paciente por associação. Falhas voltam à fila e são tentadas "
+            "de novo a cada 30 s; a fila fica na base e sobrevive ao fechar o programa."
+        )
+        rules_hint.setWordWrap(True)
+        routing_tab = QWidget()
+        routing_layout = QVBoxLayout(routing_tab)
+        routing_layout.addWidget(self.routing)
+        routing_layout.addWidget(self.rules_table)
+        routing_layout.addLayout(rules_row)
+        routing_layout.addWidget(rules_hint)
+
         tabs = QTabWidget()
         tabs.addTab(local_tab, "Este computador")
         tabs.addTab(nodes_tab, "Nós remotos")
+        tabs.addTab(routing_tab, "Auto-roteamento")
         box = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
         box.accepted.connect(self._save)
         box.rejected.connect(self.reject)
@@ -385,7 +505,41 @@ class NetworkSettingsDialog(QDialog):
         if path:
             edit.setText(path)
 
+    def _fill_rules(self) -> None:
+        self.rules_table.setRowCount(len(self.rules))
+        for row, r in enumerate(self.rules):
+            target = next((n for n in self.nodes if n.id == r.destination), None)
+            values = ["sim" if r.enabled else "não", r.name, target.name if target else "(nó removido)", r.describe_filter()]
+            for col, value in enumerate(values):
+                self.rules_table.setItem(row, col, QTableWidgetItem(value))
+
+    def _add_rule(self) -> None:
+        if not any(n.send for n in self.nodes):
+            QMessageBox.information(self, "Auto-roteamento", "Cadastre antes um nó com envio habilitado.")
+            return
+        dialog = RuleDialog(self.nodes, parent=self)
+        if dialog.exec() == QDialog.DialogCode.Accepted and dialog.result_rule:
+            self.rules.append(dialog.result_rule)
+            self._fill_rules()
+
+    def _edit_rule(self) -> None:
+        rows = self.rules_table.selectionModel().selectedRows()
+        if not rows:
+            return
+        index = rows[0].row()
+        dialog = RuleDialog(self.nodes, self.rules[index], self)
+        if dialog.exec() == QDialog.DialogCode.Accepted and dialog.result_rule:
+            self.rules[index] = dialog.result_rule
+            self._fill_rules()
+
+    def _remove_rule(self) -> None:
+        rows = self.rules_table.selectionModel().selectedRows()
+        if rows:
+            del self.rules[rows[0].row()]
+            self._fill_rules()
+
     def _fill(self) -> None:
+        self._fill_rules()
         self.table.setRowCount(len(self.nodes))
         for row, n in enumerate(self.nodes):
             values = [n.name, n.ae_title, n.host, str(n.port), RETRIEVE_LABELS.get(n.retrieve, n.retrieve), SYNTAX_LABELS.get(n.send_syntax, n.send_syntax), "sim" if n.tls else ""]
@@ -482,7 +636,7 @@ class NetworkSettingsDialog(QDialog):
             QMessageBox.warning(self, "Firewall", "Não foi possível criar a regra (sem permissão de administrador?).")
 
     def _save(self) -> None:
-        config = NetworkConfig(self._local_settings(), list(self.nodes))
+        config = NetworkConfig(self._local_settings(), list(self.nodes), self.routing.isChecked(), list(self.rules))
         try:
             config.validate()
         except ConfigError as exc:
@@ -974,7 +1128,7 @@ class QueryWindow(QMainWindow):
                         folder = incoming / uuid.uuid4().hex
                         try:
                             res = scu.get(local, target, level, [uid], folder, study_uid=study_uid if level != "STUDY" else "", progress=progress, cancelled=task.cancelled)
-                            imported = db.add_files(res.files, move=True)
+                            imported = db.add_files(res.files, move=True, origin=ORIGIN_RECEIVED)
                         finally:
                             # Duplicados e recusados ficam para trás; a pasta é só desta recuperação.
                             shutil.rmtree(folder, ignore_errors=True)
@@ -1017,6 +1171,15 @@ class ActivityDialog(QDialog):
                 self.text.appendPlainText(f"{time.strftime('%d/%m %H:%M:%S', time.localtime(stamp))}  {line}")
         service.log.connect(self._append)
         log_dir = service.db.base_dir / "logs"
+        self.queue_label = QLabel()
+        retry = QPushButton("Tentar as falhas de novo")
+        retry.clicked.connect(lambda: (service.router.retry_failed(), self._refresh_queue()))
+        discard = QPushButton("Descartar as falhas")
+        discard.clicked.connect(lambda: (service.router.discard_failed(), self._refresh_queue()))
+        queue_row = QHBoxLayout()
+        queue_row.addWidget(self.queue_label, 1)
+        queue_row.addWidget(retry)
+        queue_row.addWidget(discard)
         open_logs = QPushButton("Abrir pasta de registros")
         open_logs.clicked.connect(lambda: service.platform.open_folder(log_dir))
         close = QPushButton("Fechar")
@@ -1027,10 +1190,19 @@ class ActivityDialog(QDialog):
         row.addWidget(close)
         layout = QVBoxLayout(self)
         layout.addWidget(self.text)
+        layout.addLayout(queue_row)
         layout.addLayout(row)
+        self._refresh_queue()
+
+    def _refresh_queue(self) -> None:
+        c = self.service.router.counts()
+        state = "ligado" if self.service.config.routing_enabled else "desligado"
+        self.queue_label.setText(f"Auto-roteamento {state}: {c['pending']} imagem(ns) na fila, {c['failed']} com falha")
 
     def _append(self, line: str) -> None:
         self.text.appendPlainText(f"{time.strftime('%d/%m %H:%M:%S')}  {line}")
+        if line.startswith("roteamento:"):
+            self._refresh_queue()
 
     def done(self, result: int) -> None:
         try:
@@ -1046,6 +1218,7 @@ __all__ = [
     "NetworkSettingsDialog",
     "NodeDialog",
     "QueryWindow",
+    "RuleDialog",
     "SendDialog",
     "date_range_for",
     "local_addresses",

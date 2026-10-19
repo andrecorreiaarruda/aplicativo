@@ -49,7 +49,7 @@ from pynetdicom.sop_class import (
 )
 
 from .. import paths
-from ..database import Database
+from ..database import ORIGIN_RECEIVED, Database
 from .config import SEND_KEEP, LocalSettings, NetworkConfig, Node
 from .query import PATIENT_ROOT, STUDY_ROOT, QueryEngine, QueryError, RetrieveItem
 from .scu import client_ssl_context
@@ -324,7 +324,7 @@ class DicomListener:
 
     def _import_batch(self, batch: list[Path]) -> None:
         try:
-            result = self.db.add_files(batch, move=True)
+            result = self.db.add_files(batch, move=True, origin=ORIGIN_RECEIVED)
         except Exception as exc:  # base travada, disco cheio
             self._log(f"falha ao importar {len(batch)} objeto(s): {exc}", logging.ERROR)
             return

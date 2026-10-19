@@ -82,8 +82,9 @@ CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT);
 
 # Colunas acrescentadas depois da primeira versão. Bases antigas ganham as
 # colunas na abertura (ALTER TABLE), com o valor padrão nas linhas que já
-# existiam. Servem ao C-FIND: o nome no formato DICOM original
-# ("SILVA^JOAO", com os separadores de componente) e o StudyID.
+# existiam. Servem ao C-FIND (o nome no formato DICOM original, "SILVA^JOAO",
+# com os separadores de componente, e o StudyID) e ao auto-roteamento (o
+# AE title de quem enviou a imagem).
 _MIGRATIONS = {
     "study": (
         ("patient_name_raw", "TEXT NOT NULL DEFAULT ''"),
@@ -95,7 +96,14 @@ _MIGRATIONS = {
         ("series_time", "TEXT NOT NULL DEFAULT ''"),
         ("body_part", "TEXT NOT NULL DEFAULT ''"),
     ),
+    "image": (("source_ae", "TEXT NOT NULL DEFAULT ''"),),
 }
+
+# Origem de uma importação, para as regras de auto-roteamento (o filterType
+# do Horos distingue recebidos, importados e gerados pelo próprio programa).
+ORIGIN_RECEIVED = "received"
+ORIGIN_IMPORTED = "imported"
+ORIGIN_GENERATED = "generated"
 
 
 def _strip_accents(text: str) -> str:
@@ -162,6 +170,7 @@ class ImageRow:
     path: str
     stored_in_database: int
     file_size: int
+    source_ae: str = ""
 
 
 @dataclass
@@ -170,6 +179,8 @@ class ImportResult:
     duplicates: int = 0
     errors: list[tuple[str, str]] = field(default_factory=list)
     study_ids: set[int] = field(default_factory=set)
+    image_ids: list[int] = field(default_factory=list)
+    origin: str = ORIGIN_IMPORTED
 
 
 def _text(ds: pydicom.Dataset, keyword: str) -> str:
@@ -199,6 +210,10 @@ class Database:
         paths.mark_not_indexed(self.data_dir)
         self._index_lock = threading.Lock()
         self._next_index: int | None = None
+        # Chamados depois de cada importação que acrescentou imagens (com o
+        # ImportResult), na thread que importou. É por aqui que o
+        # auto-roteamento fica sabendo das imagens novas.
+        self.added_hooks: list[Callable[[ImportResult], None]] = []
         with self.connect() as db:
             db.executescript(_SCHEMA)
             for table, columns in _MIGRATIONS.items():
@@ -265,6 +280,7 @@ class Database:
         progress: Callable[[int, str], None] | None = None,
         cancelled: Callable[[], bool] = lambda: False,
         move: bool = False,
+        origin: str = ORIGIN_IMPORTED,
     ) -> ImportResult:
         """Importa arquivos e pastas (addFilesAtPaths no Horos).
 
@@ -275,7 +291,7 @@ class Database:
         recusados (duplicados ou ilegíveis) ficam onde estavam, para quem
         chamou decidir o que fazer com eles.
         """
-        result = ImportResult()
+        result = ImportResult(origin=origin)
         touched_series: set[int] = set()
         now = datetime.now().isoformat(timespec="seconds")
         with self.connect() as db:
@@ -322,11 +338,11 @@ class Database:
                 transfer = ""
                 if meta is not None:
                     transfer = str(meta.get("TransferSyntaxUID", ""))
-                db.execute(
+                cur = db.execute(
                     """INSERT INTO image (series_id, sop_instance_uid, sop_class_uid,
                            instance_number, number_of_frames, transfer_syntax_uid,
-                           path, stored_in_database, file_size)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                           path, stored_in_database, file_size, source_ae)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         series_id,
                         sop_uid,
@@ -337,12 +353,17 @@ class Database:
                         str(target),
                         stored,
                         target.stat().st_size,
+                        str(meta.get("SourceApplicationEntityTitle", "") if meta is not None else "").strip(),
                     ),
                 )
                 touched_series.add(series_id)
                 result.study_ids.add(study_id)
+                result.image_ids.append(int(cur.lastrowid))
                 result.added += 1
             self._refresh_counts(db, touched_series, result.study_ids)
+        if result.added:
+            for hook in list(self.added_hooks):
+                hook(result)
         return result
 
     def _upsert_study(self, db: sqlite3.Connection, ds: pydicom.Dataset, uid: str, now: str) -> int:

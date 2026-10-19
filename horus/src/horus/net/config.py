@@ -164,6 +164,61 @@ class LocalSettings:
         return self
 
 
+# Origem das imagens que uma regra de roteamento aceita (filterType do
+# Horos: 0 todas, 1 geradas pelo programa, 2 importadas; "recebidas pela
+# rede" é acréscimo do Horus, o caso mais comum de encaminhamento).
+ROUTE_ALL = "all"
+ROUTE_ORIGINS = (ROUTE_ALL, "received", "imported", "generated")
+# Tentativas depois de uma falha, as opções do Horos ("Try N times").
+ROUTE_RETRIES = (0, 5, 20, 100, 1400)
+
+
+@dataclass
+class RoutingRule:
+    """Regra de auto-roteamento (AUTOROUTINGDICTIONARY no Horos).
+
+    O Horos filtra com um NSPredicate livre sobre a imagem; aqui o filtro
+    é estruturado: cada campo preenchido precisa bater, e os vazios não
+    filtram. O destino é o id do nó, não a descrição — no Horos renomear
+    um nó quebra as regras que apontam para ele.
+    """
+
+    name: str = "nova regra"
+    destination: str = ""
+    enabled: bool = True
+    origin: str = ROUTE_ALL
+    modalities: list[str] = field(default_factory=list)
+    calling_ae: str = ""
+    description: str = ""
+    retries: int = 20
+    id: str = field(default_factory=lambda: uuid.uuid4().hex)
+
+    def validate(self, nodes: list[Node]) -> "RoutingRule":
+        self.name = (self.name or "").strip() or "regra sem nome"
+        if self.origin not in ROUTE_ORIGINS:
+            raise ConfigError(f"regra {self.name}: origem desconhecida ({self.origin})")
+        if not any(n.id == self.destination for n in nodes):
+            raise ConfigError(f"a regra de roteamento '{self.name}' envia para um nó que não existe mais")
+        self.modalities = [m.strip().upper() for m in self.modalities if m.strip()]
+        self.calling_ae = (self.calling_ae or "").strip()
+        self.description = (self.description or "").strip()
+        if int(self.retries) < 0:
+            raise ConfigError(f"regra {self.name}: tentativas não pode ser negativo")
+        return self
+
+    def describe_filter(self) -> str:
+        parts = []
+        if self.origin != ROUTE_ALL:
+            parts.append({"received": "recebidas", "imported": "importadas", "generated": "geradas"}[self.origin])
+        if self.modalities:
+            parts.append("/".join(self.modalities))
+        if self.calling_ae:
+            parts.append(f"de {self.calling_ae}")
+        if self.description:
+            parts.append(f"descrição contém “{self.description}”")
+        return ", ".join(parts) or "todas as imagens novas"
+
+
 def _from_dict(cls, data: dict):
     known = {f.name for f in fields(cls)}
     return cls(**{k: v for k, v in data.items() if k in known})
@@ -173,6 +228,9 @@ def _from_dict(cls, data: dict):
 class NetworkConfig:
     local: LocalSettings = field(default_factory=LocalSettings)
     nodes: list[Node] = field(default_factory=list)
+    # AUTOROUTINGACTIVATED no Horos (desligado por padrão).
+    routing_enabled: bool = False
+    rules: list[RoutingRule] = field(default_factory=list)
 
     def node_by_ae(self, ae_title: str) -> Node | None:
         wanted = (ae_title or "").strip()
@@ -191,16 +249,25 @@ class NetworkConfig:
                 # mesmo AE deixariam a escolha ambígua.
                 raise ConfigError(f"AE title repetido na lista de nós: {node.ae_title}")
             seen.add(node.ae_title)
+        for rule in self.rules:
+            rule.validate(self.nodes)
         return self
 
     def to_dict(self) -> dict:
-        return {"version": 1, "local": asdict(self.local), "nodes": [asdict(n) for n in self.nodes]}
+        return {
+            "version": 1,
+            "local": asdict(self.local),
+            "nodes": [asdict(n) for n in self.nodes],
+            "routing_enabled": self.routing_enabled,
+            "rules": [asdict(r) for r in self.rules],
+        }
 
     @classmethod
     def from_dict(cls, data: dict) -> NetworkConfig:
         local = _from_dict(LocalSettings, data.get("local", {}))
         nodes = [_from_dict(Node, n) for n in data.get("nodes", [])]
-        return cls(local, nodes)
+        rules = [_from_dict(RoutingRule, r) for r in data.get("rules", [])]
+        return cls(local, nodes, bool(data.get("routing_enabled", False)), rules)
 
     @classmethod
     def load(cls, base_dir: Path) -> NetworkConfig:

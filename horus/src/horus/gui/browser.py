@@ -32,7 +32,7 @@ from PySide6.QtWidgets import (
 
 from .. import APP_NAME, __version__, paths
 from ..anonymize import Anonymizer
-from ..database import Database, SeriesRow, StudyRow
+from ..database import ORIGIN_GENERATED, Database, SeriesRow, StudyRow
 from ..dicom.thumbnail import series_thumbnail_png
 from ..platform import Platform
 from .anonymize_dialog import AnonymizeDialog
@@ -173,6 +173,9 @@ class BrowserWindow(QMainWindow):
         net_menu = self.menuBar().addMenu("&Rede")
         net_menu.addAction(self.act_query)
         net_menu.addAction(self.act_send)
+        route = QAction("Aplicar regras de roteamento à seleção", self)
+        route.triggered.connect(self.apply_routing)
+        net_menu.addAction(route)
         net_menu.addSeparator()
         settings = QAction("Configurações de rede…", self)
         settings.triggered.connect(self.network_settings)
@@ -182,7 +185,7 @@ class BrowserWindow(QMainWindow):
         net_menu.addAction(activity)
         if self.network is None:
             # Modo disco: a mídia é só leitura e não há base para receber.
-            for act in (self.act_query, self.act_send, settings, activity):
+            for act in (self.act_query, self.act_send, route, settings, activity):
                 act.setVisible(False)
             net_menu.menuAction().setVisible(False)
         help_menu = self.menuBar().addMenu("A&juda")
@@ -425,7 +428,7 @@ class BrowserWindow(QMainWindow):
             produced = Anonymizer(options).anonymize_files(
                 [i.path for i in images], out_dir, progress=lambda n, _p: task.report("Anonimizando", n, len(images)), cancelled=task.cancelled
             )
-            result = self.db.add_files([str(p) for p in produced.values()], copy=True)
+            result = self.db.add_files([str(p) for p in produced.values()], copy=True, origin=ORIGIN_GENERATED)
             shutil.rmtree(out_dir, ignore_errors=True)
             return result
 
@@ -515,6 +518,22 @@ class BrowserWindow(QMainWindow):
             QMessageBox.information(self, "Enviar", "Selecione exames ou séries para enviar.")
             return
         SendDialog([i.path for i in images], self.network, self.runner, self).exec()
+
+    def apply_routing(self) -> None:
+        """Passa a seleção pelas regras ativas, mesmo com o roteamento
+        automático desligado (o menu de contexto do Horos faz o mesmo)."""
+        if self.network is None:
+            return
+        studies, series = self.selection()
+        images = self.db.images_for(studies, series)
+        if not images:
+            QMessageBox.information(self, "Roteamento", "Selecione exames ou séries.")
+            return
+        if not any(r.enabled for r in self.network.config.rules):
+            QMessageBox.information(self, "Roteamento", "Nenhuma regra ativa. Crie uma em Rede → Configurações de rede → Auto-roteamento.")
+            return
+        queued = self.network.router.enqueue([i.id for i in images])
+        self.statusBar().showMessage(f"{queued} imagem(ns) posta(s) na fila de roteamento", 8000)
 
     def closeEvent(self, event) -> None:
         for viewer in list(self.viewers):

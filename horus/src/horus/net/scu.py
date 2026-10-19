@@ -242,6 +242,9 @@ class SendResult:
     warnings: int = 0
     failed: list[tuple[str, str]] = field(default_factory=list)
     cancelled: bool = False
+    # Arquivos aceitos pelo destino (com ou sem aviso). Num cancelamento, o
+    # que não está aqui nem em `failed` não chegou a ser enviado.
+    sent_paths: list[str] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -286,6 +289,7 @@ def send(
     result = SendResult(total=len(paths))
     for part in parts:
         result.sent += part.sent
+        result.sent_paths.extend(part.sent_paths)
         result.warnings += part.warnings
         result.failed.extend(part.failed)
         result.cancelled = result.cancelled or part.cancelled
@@ -352,11 +356,10 @@ def _send_one(
                         # para a fila e a associação é refeita uma vez.
                         dropped = True
                         break
-                    if code == 0x0000:
+                    if code == 0x0000 or code in STORE_WARNINGS:
                         result.sent += 1
-                    elif code in STORE_WARNINGS:
-                        result.sent += 1
-                        result.warnings += 1
+                        result.warnings += code != 0x0000
+                        result.sent_paths.append(info.path)
                     else:
                         comment = str(status.get("ErrorComment", ""))
                         result.failed.append((info.path, f"{_status_text(code)}{': ' + comment if comment else ''}"))
