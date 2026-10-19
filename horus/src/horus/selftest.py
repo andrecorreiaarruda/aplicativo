@@ -100,8 +100,38 @@ def run(report: Path | None = None) -> int:
                 return f"{p.name}: {len(recorders)} gravador(es), {len(volumes)} volume(s) removível(is) {p.recorder_error}".strip()
             return p.name
 
+        def network():
+            import socket
+
+            from .database import Database
+            from .net import scu
+            from .net.config import LocalSettings, NetworkConfig, Node
+            from .net.scp import DicomListener
+
+            with socket.socket() as s:
+                s.bind(("127.0.0.1", 0))
+                port = s.getsockname()[1]
+            local = LocalSettings(ae_title="SELFTEST", port=port, bind_address="127.0.0.1")
+            listener = DicomListener(Database(work / "rede"), NetworkConfig(local))
+            listener.start()
+            try:
+                res = scu.echo(LocalSettings(ae_title="CLIENTE"), Node("eu", "SELFTEST", "127.0.0.1", port))
+                assert res.ok, res.message
+            finally:
+                listener.stop()
+            return "listener e C-ECHO em 127.0.0.1"
+
+        def translations():
+            from PySide6.QtCore import QLibraryInfo
+
+            folder = Path(QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath))
+            assert (folder / "qt_pt_BR.qm").exists() or (folder / "qtbase_pt_BR.qm").exists(), folder
+            return "traduções do Qt em português"
+
         check("codecs", codecs)
         check("gravação", disc)
+        check("rede", network)
+        check("tradução", translations)
         check("plataforma", platform_layer)
 
     text = "\n".join(lines) + f"\n{'SUCESSO' if ok else 'FALHOU'}\n"

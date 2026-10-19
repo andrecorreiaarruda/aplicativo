@@ -14,6 +14,7 @@ paciente mesmo quando vêm de equipamentos diferentes.
 
 from __future__ import annotations
 
+import os
 import shutil
 import sqlite3
 import threading
@@ -79,9 +80,33 @@ CREATE INDEX IF NOT EXISTS study_patient ON study(patient_uid);
 CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT);
 """
 
+# Colunas acrescentadas depois da primeira versão. Bases antigas ganham as
+# colunas na abertura (ALTER TABLE), com o valor padrão nas linhas que já
+# existiam. Servem ao C-FIND: o nome no formato DICOM original
+# ("SILVA^JOAO", com os separadores de componente) e o StudyID.
+_MIGRATIONS = {
+    "study": (
+        ("patient_name_raw", "TEXT NOT NULL DEFAULT ''"),
+        ("referring_physician_raw", "TEXT NOT NULL DEFAULT ''"),
+        ("dicom_study_id", "TEXT NOT NULL DEFAULT ''"),
+    ),
+    "series": (
+        ("series_date", "TEXT NOT NULL DEFAULT ''"),
+        ("series_time", "TEXT NOT NULL DEFAULT ''"),
+        ("body_part", "TEXT NOT NULL DEFAULT ''"),
+    ),
+}
+
 
 def _strip_accents(text: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFKD", text) if not unicodedata.combining(c))
+
+
+def fold_text(value) -> str:
+    """Texto sem acentos, em maiúsculas: "Conceição" → "CONCEICAO"."""
+    if value is None:
+        return ""
+    return _strip_accents(str(value)).upper()
 
 
 def patient_uid(name: str, patient_id: str, birth_date: str) -> str:
@@ -108,6 +133,9 @@ class StudyRow:
     modalities: str
     number_of_images: int
     date_added: str
+    patient_name_raw: str = ""
+    referring_physician_raw: str = ""
+    dicom_study_id: str = ""
 
 
 @dataclass
@@ -173,6 +201,11 @@ class Database:
         self._next_index: int | None = None
         with self.connect() as db:
             db.executescript(_SCHEMA)
+            for table, columns in _MIGRATIONS.items():
+                existing = {r["name"] for r in db.execute(f"PRAGMA table_info({table})")}
+                for name, decl in columns:
+                    if name not in existing:
+                        db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
 
     # ------------------------------------------------------------ conexão
 
@@ -181,6 +214,9 @@ class Database:
         """Uma conexão por uso: a importação roda em outra thread."""
         conn = sqlite3.connect(self.sql_path, timeout=30)
         conn.row_factory = sqlite3.Row
+        # Comparação sem acentos nem maiúsculas, usada pelo C-FIND (o Horos
+        # compara com [cd], case- e diacritic-insensitive, no Core Data).
+        conn.create_function("horus_fold", 1, fold_text, deterministic=True)
         conn.execute("PRAGMA foreign_keys = ON")
         conn.execute("PRAGMA journal_mode = WAL")
         try:
@@ -228,11 +264,16 @@ class Database:
         copy: bool = True,
         progress: Callable[[int, str], None] | None = None,
         cancelled: Callable[[], bool] = lambda: False,
+        move: bool = False,
     ) -> ImportResult:
         """Importa arquivos e pastas (addFilesAtPaths no Horos).
 
         Com `copy=False` a base só referencia os arquivos no local de
-        origem — o que o Horos faz ao ler um CD sem copiar.
+        origem — o que o Horos faz ao ler um CD sem copiar. Com `move=True`
+        o arquivo é movido para dentro da base, em vez de copiado: é o caso
+        dos recebidos pela rede, que já estão em INCOMING.noindex. Arquivos
+        recusados (duplicados ou ilegíveis) ficam onde estavam, para quem
+        chamou decidir o que fazer com eles.
         """
         result = ImportResult()
         touched_series: set[int] = set()
@@ -263,9 +304,17 @@ class Database:
 
                 stored = 0
                 target = Path(path)
-                if copy:
+                if copy or move:
                     target = self._unique_data_path()
-                    shutil.copyfile(path, target)
+                    if move:
+                        # os.replace é atômico na mesma unidade; entre
+                        # unidades diferentes, shutil.move copia e apaga.
+                        try:
+                            os.replace(path, target)
+                        except OSError:
+                            shutil.move(str(path), target)
+                    else:
+                        shutil.copyfile(path, target)
                     stored = 1
 
                 study_id = self._upsert_study(db, ds, study_uid, now)
@@ -307,8 +356,9 @@ class Database:
             """INSERT INTO study (study_instance_uid, patient_uid, patient_name, patient_id,
                    patient_birth_date, patient_sex, study_date, study_time,
                    study_description, accession_number, institution_name,
-                   referring_physician, date_added)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   referring_physician, date_added, patient_name_raw,
+                   referring_physician_raw, dicom_study_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 uid,
                 patient_uid(name, pid, birth),
@@ -323,6 +373,9 @@ class Database:
                 _text(ds, "InstitutionName"),
                 _text(ds, "ReferringPhysicianName").replace("^", " ").strip(),
                 now,
+                _text(ds, "PatientName"),
+                _text(ds, "ReferringPhysicianName"),
+                _text(ds, "StudyID"),
             ),
         )
         return int(cur.lastrowid)
@@ -333,8 +386,8 @@ class Database:
             return int(row["id"])
         cur = db.execute(
             """INSERT INTO series (study_id, series_instance_uid, series_number, modality,
-                   series_description, sop_class_uid)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+                   series_description, sop_class_uid, series_date, series_time, body_part)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 study_id,
                 uid,
@@ -342,6 +395,9 @@ class Database:
                 _text(ds, "Modality"),
                 _text(ds, "SeriesDescription"),
                 _text(ds, "SOPClassUID"),
+                _text(ds, "SeriesDate"),
+                _text(ds, "SeriesTime"),
+                _text(ds, "BodyPartExamined"),
             ),
         )
         return int(cur.lastrowid)

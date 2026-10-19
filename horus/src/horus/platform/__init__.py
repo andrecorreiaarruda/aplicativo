@@ -113,6 +113,10 @@ class Platform:
     def open_folder(self, path: Path) -> None:
         pass
 
+    def allow_inbound_port(self, port: int, program: str) -> bool:
+        """Libera a porta do listener no firewall do sistema, se fizer sentido."""
+        return False
+
 
 def current() -> Platform:
     if sys.platform == "win32":

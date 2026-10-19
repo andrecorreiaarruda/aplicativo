@@ -22,7 +22,7 @@ datas = [
 ]
 # Os codecs do pylibjpeg são plugins descobertos por "entry points": sem os
 # metadados dos pacotes o executável abre, mas não decodifica JPEG/JPEG 2000.
-for dist in ("pydicom", "pylibjpeg", "pylibjpeg-libjpeg", "pylibjpeg-openjpeg"):
+for dist in ("pydicom", "pynetdicom", "pylibjpeg", "pylibjpeg-libjpeg", "pylibjpeg-openjpeg"):
     datas += copy_metadata(dist)
 
 hiddenimports = (
@@ -31,6 +31,7 @@ hiddenimports = (
     + collect_submodules("pylibjpeg")
     + collect_submodules("libjpeg")
     + collect_submodules("openjpeg")
+    + collect_submodules("pynetdicom")
 )
 try:
     import pyzipper  # noqa: F401  (opcional: ZIP com AES no gravador)

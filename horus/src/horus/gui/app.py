@@ -17,6 +17,7 @@ import os
 import sys
 from pathlib import Path
 
+from PySide6.QtCore import QLibraryInfo, QLocale, QTranslator
 from PySide6.QtGui import QColor, QIcon, QPalette
 from PySide6.QtWidgets import QApplication, QMessageBox
 
@@ -94,10 +95,15 @@ def main(argv: list[str] | None = None) -> int:
     app = QApplication.instance() or QApplication(sys.argv[:1])
     app.setStyle("Fusion")
     app.setPalette(_dark_palette())
+    # Textos padrão do Qt (Salvar, Cancelar, Sim, Não...) em português.
+    translator = QTranslator(app)
+    if translator.load(QLocale("pt_BR"), "qt", "_", QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)):
+        app.installTranslator(translator)
     if ICON.exists():
         app.setWindowIcon(QIcon(str(ICON)))
 
     from .browser import BrowserWindow
+    from .network import NetworkService
 
     platform = current()
     disc_mode = args.disc
@@ -114,11 +120,19 @@ def main(argv: list[str] | None = None) -> int:
     else:
         db = Database(Path(args.data_dir) if args.data_dir else None)
 
-    window = BrowserWindow(db, platform, disc_mode=disc_mode)
+    network = None
+    if not disc_mode:
+        network = NetworkService(db, platform)
+        network.start()
+    window = BrowserWindow(db, platform, disc_mode=disc_mode, network=network)
     window.show()
+    if network is not None and network.config_error:
+        QMessageBox.warning(window, APP_NAME, "Configuração de rede ignorada: " + network.config_error)
     if sources:
         window.import_paths(sources, copy=not disc_mode)
     code = app.exec()
+    if network is not None:
+        network.stop()
     window.runner.wait(5000)
     if disc_mode:
         # A base do modo disco só tinha referências à mídia; não sobra nada.

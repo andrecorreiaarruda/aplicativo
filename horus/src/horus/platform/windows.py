@@ -329,5 +329,23 @@ class WindowsPlatform(Platform):
         finally:
             k.CloseHandle(handle)
 
+    def allow_inbound_port(self, port: int, program: str) -> bool:
+        """Cria a regra de entrada no Firewall do Windows Defender.
+
+        A regra exige administrador; o `netsh` é aberto com o verbo "runas",
+        que mostra o pedido de elevação do UAC. A regra vale para o
+        executável do Horus e só para a porta TCP do listener.
+        """
+        import ctypes
+
+        rule = f"Horus DICOM ({port})"
+        params = (
+            f'advfirewall firewall add rule name="{rule}" dir=in action=allow '
+            f'protocol=TCP localport={int(port)} program="{program}" enable=yes'
+        )
+        # ShellExecuteW devolve um valor > 32 quando o processo foi iniciado.
+        result = ctypes.windll.shell32.ShellExecuteW(None, "runas", "netsh", params, None, 0)
+        return int(result) > 32
+
     def open_folder(self, path: Path) -> None:
         os.startfile(str(path))  # type: ignore[attr-defined]  # só existe no Windows

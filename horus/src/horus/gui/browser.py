@@ -37,6 +37,13 @@ from ..dicom.thumbnail import series_thumbnail_png
 from ..platform import Platform
 from .anonymize_dialog import AnonymizeDialog
 from .burner import BurnDialog
+from .network import (
+    ActivityDialog,
+    NetworkService,
+    NetworkSettingsDialog,
+    QueryWindow,
+    SendDialog,
+)
 from .tasks import Task, TaskRunner
 from .viewer import SeriesEntry, ViewerWindow
 
@@ -54,13 +61,15 @@ def _series_title(s: SeriesRow) -> str:
 
 
 class BrowserWindow(QMainWindow):
-    def __init__(self, database: Database, platform: Platform, disc_mode: bool = False):
+    def __init__(self, database: Database, platform: Platform, disc_mode: bool = False, network: NetworkService | None = None):
         super().__init__()
         self.db = database
         self.platform = platform
         self.disc_mode = disc_mode
+        self.network = network
         self.runner = TaskRunner()
         self.viewers: list[ViewerWindow] = []
+        self.query_window: QueryWindow | None = None
         self.setWindowTitle(f"{APP_NAME} {__version__}" + (" — disco" if disc_mode else ""))
         self.resize(1180, 760)
         self.setAcceptDrops(True)
@@ -95,8 +104,17 @@ class BrowserWindow(QMainWindow):
         self.progress.setMaximumWidth(220)
         self.progress.setVisible(False)
         self.summary = QLabel()
+        self.listener_label = QLabel()
+        self.statusBar().addPermanentWidget(self.listener_label)
         self.statusBar().addPermanentWidget(self.summary)
         self.statusBar().addPermanentWidget(self.progress)
+        # Chegada de imagens pela rede atualiza a lista, no máximo a cada 1,5 s.
+        self._incoming_timer = QTimer(self, singleShot=True, interval=1500)
+        self._incoming_timer.timeout.connect(self.refresh)
+        if self.network is not None:
+            self.network.state.connect(lambda _on: self._update_listener_label())
+            self.network.imported.connect(self._on_network_import)
+            self._update_listener_label()
         self._search_timer = QTimer(self, singleShot=True, interval=250)
         self._search_timer.timeout.connect(self.refresh)
         self.refresh()
@@ -128,6 +146,9 @@ class BrowserWindow(QMainWindow):
         self.act_anon = action("Anonimizar", SP.SP_FileDialogDetailedView, self.anonymize, None, "Criar cópias anonimizadas na base")
         self.act_delete = action("Excluir", SP.SP_TrashIcon, self.delete, QKeySequence.StandardKey.Delete, "Excluir da base")
         bar.addSeparator()
+        self.act_query = action("Consultar PACS", SP.SP_FileDialogStart, self.open_query, "Ctrl+K", "Consultar e recuperar exames de outros nós (C-FIND, C-MOVE, C-GET)")
+        self.act_send = action("Enviar", SP.SP_ArrowRight, self.send, "Ctrl+E", "Enviar a seleção para um nó DICOM (C-STORE)")
+        bar.addSeparator()
         self.search = QLineEdit()
         self.search.setPlaceholderText("Pesquisar paciente, ID, descrição, nº de acesso…")
         self.search.setClearButtonEnabled(True)
@@ -149,6 +170,21 @@ class BrowserWindow(QMainWindow):
         quit_act.setShortcut(QKeySequence.StandardKey.Quit)
         quit_act.triggered.connect(self.close)
         menu.addAction(quit_act)
+        net_menu = self.menuBar().addMenu("&Rede")
+        net_menu.addAction(self.act_query)
+        net_menu.addAction(self.act_send)
+        net_menu.addSeparator()
+        settings = QAction("Configurações de rede…", self)
+        settings.triggered.connect(self.network_settings)
+        net_menu.addAction(settings)
+        activity = QAction("Atividade de rede…", self)
+        activity.triggered.connect(self.network_activity)
+        net_menu.addAction(activity)
+        if self.network is None:
+            # Modo disco: a mídia é só leitura e não há base para receber.
+            for act in (self.act_query, self.act_send, settings, activity):
+                act.setVisible(False)
+            net_menu.menuAction().setVisible(False)
         help_menu = self.menuBar().addMenu("A&juda")
         about = QAction("Sobre", self)
         about.triggered.connect(self._about)
@@ -426,7 +462,63 @@ class BrowserWindow(QMainWindow):
             self.db.delete(studies, series)
             self.refresh()
 
+    # ------------------------------------------------------------- rede
+
+    def _update_listener_label(self) -> None:
+        if self.network is None:
+            return
+        text = self.network.status_text()
+        color = "#7ee787" if self.network.running else "#f0883e"
+        self.listener_label.setText(f"<span style='color:{color}'>{text}</span>")
+        self.listener_label.setToolTip(self.network.listener_error or "")
+
+    def _on_network_import(self, data: dict) -> None:
+        if data.get("added"):
+            self.statusBar().showMessage(f"{data['added']} imagem(ns) recebida(s) pela rede", 8000)
+            self._incoming_timer.start()
+
+    def network_settings(self) -> None:
+        if self.network is None:
+            return
+        dialog = NetworkSettingsDialog(self.network, self.runner, self)
+        if dialog.exec() == NetworkSettingsDialog.DialogCode.Accepted:
+            try:
+                self.network.apply(dialog.result_config)
+            except Exception as exc:
+                QMessageBox.critical(self, "Rede", f"Não foi possível aplicar a configuração: {exc}")
+            if self.network.listener_error:
+                QMessageBox.warning(self, "Rede", self.network.listener_error)
+            if self.query_window is not None:
+                self.query_window.refresh_nodes()
+            self._update_listener_label()
+
+    def network_activity(self) -> None:
+        if self.network is not None:
+            ActivityDialog(self.network, self).exec()
+
+    def open_query(self) -> None:
+        if self.network is None:
+            return
+        if self.query_window is None:
+            self.query_window = QueryWindow(self.network, self.runner, self.refresh, self)
+        self.query_window.refresh_nodes()
+        self.query_window.show()
+        self.query_window.raise_()
+        self.query_window.activateWindow()
+
+    def send(self) -> None:
+        if self.network is None:
+            return
+        studies, series = self.selection()
+        images = self.db.images_for(studies, series)
+        if not images:
+            QMessageBox.information(self, "Enviar", "Selecione exames ou séries para enviar.")
+            return
+        SendDialog([i.path for i in images], self.network, self.runner, self).exec()
+
     def closeEvent(self, event) -> None:
         for viewer in list(self.viewers):
             viewer.close()
+        if self.query_window is not None:
+            self.query_window.close()
         super().closeEvent(event)

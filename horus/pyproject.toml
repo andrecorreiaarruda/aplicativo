@@ -13,6 +13,9 @@ dependencies = [
     "numpy>=1.26",
     "PySide6>=6.6",
     "pycdlib>=1.14",
+    # Rede DICOM (o DCMTK embutido no Horos). 2.1+ pelo encoded_dataset(),
+    # que grava o objeto recebido sem decodificá-lo.
+    "pynetdicom>=2.1",
     # Decodificadores de sintaxe comprimida (JPEG, JPEG-LS, JPEG 2000).
     # O Horos embute DCMTK, GDCM, OpenJPEG e CharLS; aqui os mesmos
     # codecs chegam como rodas binárias, com versões para Windows.
@@ -40,3 +43,11 @@ horus = ["platform/*.ps1", "gui/*.svg"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 160
+
+[tool.ruff.lint]
+# O conjunto clássico do ruff (erros de sintaxe, nomes indefinidos,
+# importações sem uso), fixado para não mudar a cada versão.
+select = ["E4", "E7", "E9", "F"]
