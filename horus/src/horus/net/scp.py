@@ -25,6 +25,7 @@ import logging
 import queue
 import shutil
 import ssl
+import sys
 import threading
 import time
 import uuid
@@ -38,6 +39,7 @@ import pydicom
 from pynetdicom import AE, evt
 from pynetdicom.dsutils import encode_file_meta
 from pynetdicom.presentation import AllStoragePresentationContexts
+from pynetdicom.transport import ThreadedAssociationServer
 from pynetdicom.sop_class import (
     PatientRootQueryRetrieveInformationModelFind,
     PatientRootQueryRetrieveInformationModelGet,
@@ -105,6 +107,29 @@ def server_ssl_context(local: LocalSettings) -> ssl.SSLContext:
             ctx.load_default_certs(ssl.Purpose.CLIENT_AUTH)
         ctx.verify_mode = ssl.CERT_REQUIRED
     return ctx
+
+
+class _ListenerServer(ThreadedAssociationServer):
+    """Servidor do pynetdicom que não divide a porta com outro processo.
+
+    O pynetdicom liga SO_REUSEADDR no socket de escuta. No Linux e no macOS
+    isso só deixa reabrir uma porta com conexões em TIME_WAIT; no Windows,
+    deixa um segundo processo abrir a MESMA porta que já está em escuta, e
+    duas cópias do Horus (ou o Horus e outro PACS) passam a dividir as
+    conexões sem erro nenhum. No Windows o socket fica sem a opção, como
+    faz o socket.create_server do próprio Python: aí o segundo bind falha
+    e o conflito aparece. (O Windows já permite reabrir uma porta com
+    conexões em TIME_WAIT sem SO_REUSEADDR.)
+    """
+
+    def server_bind(self) -> None:
+        if sys.platform != "win32":
+            super().server_bind()
+            return
+        if self.ae.network_timeout is not None:
+            self.socket.settimeout(self.ae.network_timeout)
+        self.socket.bind(self.server_address)
+        self.server_address = self.socket.getsockname()
 
 
 class DicomListener:
@@ -175,17 +200,22 @@ class DicomListener:
         ]
         ssl_context = server_ssl_context(local) if local.tls_enabled else None
         try:
-            self._server = ae.start_server(
+            # O equivalente a ae.start_server(block=False), com o servidor
+            # acima no lugar do ThreadedAssociationServer padrão.
+            server = ae.make_server(
                 (local.bind_address or "", local.port),
-                block=False,
                 evt_handlers=handlers,
                 ssl_context=ssl_context,
+                server_class=_ListenerServer,
             )
         except OSError as exc:
             raise ListenerError(
                 f"não foi possível abrir a porta {local.port}: {exc.strerror or exc}. "
                 "Outro programa (ou outra cópia do Horus) pode estar usando a porta."
             ) from exc
+        threading.Thread(target=server.serve_forever, name="horus-listener", daemon=True).start()
+        ae._servers.append(server)  # como o start_server: shutdown() o retira daí
+        self._server = server
         self._importer = threading.Thread(target=self._import_loop, name="horus-incoming", daemon=True)
         self._importer.start()
         self._recover_incoming()

@@ -12,6 +12,7 @@ Linux, pelo apt); no resto são pulados.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import time
@@ -30,13 +31,34 @@ from horus.net.config import NetworkConfig
 from horus.net.scp import DicomListener
 
 TOOLS = ("echoscu", "storescu", "findscu", "getscu", "movescu", "storescp", "dcmqrscp", "dcmqridx")
-pytestmark = pytest.mark.skipif(
-    any(shutil.which(t) is None for t in TOOLS), reason="ferramentas do DCMTK não instaladas"
-)
 
 
-def _run(*args: str, timeout: int = 60) -> subprocess.CompletedProcess:
-    return subprocess.run([str(a) for a in args], capture_output=True, text=True, timeout=timeout)
+def _find_dcmtk(tool: str) -> str | None:
+    """O executável do DCMTK, não um homônimo.
+
+    O pynetdicom instala scripts com os mesmos nomes (echoscu, findscu...),
+    que costumam vir antes no PATH quando há um ambiente Python ativo; as
+    opções são outras. O do DCMTK se identifica no --version.
+    """
+    for folder in os.environ.get("PATH", "").split(os.pathsep):
+        candidate = Path(folder) / tool
+        if not (candidate.is_file() and os.access(candidate, os.X_OK)):
+            continue
+        try:
+            out = subprocess.run([str(candidate), "--version"], capture_output=True, text=True, timeout=10)
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        if "dcmtk" in (out.stdout + out.stderr).lower():
+            return str(candidate)
+    return None
+
+
+DCMTK = {t: _find_dcmtk(t) for t in TOOLS}
+pytestmark = pytest.mark.skipif(not all(DCMTK.values()), reason="ferramentas do DCMTK não instaladas")
+
+
+def _run(tool: str, *args, timeout: int = 60) -> subprocess.CompletedProcess:
+    return subprocess.run([DCMTK[tool], *(str(a) for a in args)], capture_output=True, text=True, timeout=timeout)
 
 
 def _wait_dicom(ae: str, port: int, timeout: float = 15) -> None:
@@ -119,7 +141,7 @@ def test_horus_sends_to_storescp(tmp_path):
     out = tmp_path / "storescp"
     out.mkdir()
     port = free_port()
-    proc = subprocess.Popen(["storescp", "-aet", "PACS", "-od", str(out), str(port)], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    proc = subprocess.Popen([DCMTK["storescp"], "-aet", "PACS", "-od", str(out), str(port)], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     try:
         _wait_dicom("PACS", port)
         res = scu.send(local("HORUS"), node("PACS", port), files)
@@ -156,7 +178,7 @@ def test_horus_queries_and_retrieves_from_dcmqrscp(tmp_path):
     # Modo padrão (um processo por associação): o --single-process do
     # DCMTK 3.6.7 termina com segmentation fault depois da primeira
     # associação, mesmo com o echoscu do próprio DCMTK.
-    proc = subprocess.Popen(["dcmqrscp", "-c", str(cfg)], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    proc = subprocess.Popen([DCMTK["dcmqrscp"], "-c", str(cfg)], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     try:
         _wait_dicom("PACS", qr_port)
         pacs = node("PACS", qr_port)
