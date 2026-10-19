@@ -77,3 +77,10 @@ Entre online uma vez, desconecte a rede, crie registros e reinicie o aplicativo.
 - conflitos sem tela de resolução;
 - sem exclusões sincronizadas na interface;
 - sem anexos offline.
+
+## Horus — visualizador e gravador DICOM
+
+A pasta [`horus/`](horus/README.md) traz um aplicativo separado, em
+Python/Qt: visualizador e gravador DICOM inspirado no Horos (macOS) e
+portado para Windows. A análise do Horos, com as evidências no código, está
+em [`horus/docs/EVIDENCIAS.md`](horus/docs/EVIDENCIAS.md).

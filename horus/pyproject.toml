@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "horus-dicom"
+version = "0.1.0"
+description = "Visualizador e gravador DICOM inspirado no Horos, portado para Windows."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pydicom>=3.0,<4",
+    "numpy>=1.26",
+    "PySide6>=6.6",
+    "pycdlib>=1.14",
+    # Decodificadores de sintaxe comprimida (JPEG, JPEG-LS, JPEG 2000).
+    # O Horos embute DCMTK, GDCM, OpenJPEG e CharLS; aqui os mesmos
+    # codecs chegam como rodas binárias, com versões para Windows.
+    "pylibjpeg>=2.0",
+    "pylibjpeg-libjpeg>=2.1",
+    "pylibjpeg-openjpeg>=2.3",
+]
+
+[project.optional-dependencies]
+# ZIP com AES para a opção "criptografar" do gravador. O Horos usa
+# `zip -e`, que gera a cifra ZipCrypto, fraca e quebrável.
+zip = ["pyzipper>=0.3.6"]
+dev = ["pytest>=8"]
+build = ["pyinstaller>=6.3"]
+
+[project.scripts]
+horus = "horus.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+horus = ["platform/*.ps1", "gui/*.svg"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
