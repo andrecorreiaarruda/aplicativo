@@ -12,6 +12,32 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+// Limites de entrada. Cada consulta vira uma chamada paga a dois serviços
+// externos (embedding e explicação); sem teto, um texto enorme enviado por
+// qualquer conta autenticada vira custo e latência.
+const MAX_QUERY_LENGTH = 2000;
+const MAX_FILTER_LENGTH = 120;
+const MAX_EXPLANATION_LENGTH = 600;
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** UUID válido ou nulo; qualquer outra coisa é erro de quem chamou. */
+function optionalUuid(value: unknown): string | null | undefined {
+  if (value === null || value === undefined || value === "") return null;
+  return typeof value === "string" && UUID_PATTERN.test(value)
+    ? value
+    : undefined;
+}
+
+/** Texto curto de filtro, aparado; nulo quando vazio. */
+function optionalFilter(value: unknown): string | null | undefined {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (trimmed.length > MAX_FILTER_LENGTH) return undefined;
+  return trimmed || null;
+}
+
 type SearchBody = {
   queryText?: string;
   equipmentId?: string | null;
@@ -114,8 +140,16 @@ async function explainMatches(
     };
     const result: Record<string, string> = {};
     for (const item of parsed.explanations ?? []) {
-      if (item.service_case_id && item.explanation) {
-        result[item.service_case_id] = item.explanation;
+      if (
+        typeof item.service_case_id === "string" &&
+        typeof item.explanation === "string" &&
+        item.explanation.trim()
+      ) {
+        // O texto vem de um modelo que leu conteúdo digitado por usuários;
+        // é exibido como texto puro e com tamanho limitado.
+        result[item.service_case_id] = item.explanation
+          .trim()
+          .slice(0, MAX_EXPLANATION_LENGTH);
       }
     }
     return result;
@@ -144,10 +178,40 @@ Deno.serve(async (request) => {
       return jsonResponse({ error: "Server configuration is incomplete" }, 500);
     }
 
-    const body = await request.json() as SearchBody;
-    const queryText = body.queryText?.trim();
-    if (!queryText || queryText.length < 5) {
+    let body: SearchBody;
+    try {
+      body = await request.json() as SearchBody;
+    } catch (_) {
+      return jsonResponse({ error: "Request body must be JSON" }, 400);
+    }
+    if (typeof body !== "object" || body === null) {
+      return jsonResponse({ error: "Request body must be a JSON object" }, 400);
+    }
+
+    const queryText = typeof body.queryText === "string"
+      ? body.queryText.trim()
+      : "";
+    if (queryText.length < 5) {
       return jsonResponse({ error: "Describe the failure using at least 5 characters" }, 400);
+    }
+    if (queryText.length > MAX_QUERY_LENGTH) {
+      return jsonResponse(
+        { error: `Describe the failure using at most ${MAX_QUERY_LENGTH} characters` },
+        400,
+      );
+    }
+
+    const equipmentId = optionalUuid(body.equipmentId);
+    const manufacturerId = optionalUuid(body.manufacturerId);
+    const modelId = optionalUuid(body.modelId);
+    const subsystem = optionalFilter(body.subsystem);
+    const errorCode = optionalFilter(body.errorCode);
+    if (
+      equipmentId === undefined || manufacturerId === undefined ||
+      modelId === undefined || subsystem === undefined ||
+      errorCode === undefined
+    ) {
+      return jsonResponse({ error: "Invalid search filter" }, 400);
     }
 
     const userClient = createClient(supabaseUrl, anonKey, {
@@ -189,15 +253,17 @@ Deno.serve(async (request) => {
       return jsonResponse({ error: "Unexpected embedding dimensions" }, 502);
     }
 
-    const resultLimit = Math.min(Math.max(body.limit ?? 10, 1), 20);
+    // `limit` pode chegar como texto ou NaN; só um inteiro é aceito.
+    const requestedLimit = Number.isInteger(body.limit) ? body.limit as number : 10;
+    const resultLimit = Math.min(Math.max(requestedLimit, 1), 20);
     const { data: cases, error: searchError } = await userClient.rpc("search_similar_cases", {
       query_embedding: queryEmbedding,
       query_text: queryText,
-      filter_equipment_id: body.equipmentId ?? null,
-      filter_manufacturer_id: body.manufacturerId ?? null,
-      filter_model_id: body.modelId ?? null,
-      filter_subsystem: body.subsystem?.trim() || null,
-      filter_error_code: body.errorCode?.trim() || null,
+      filter_equipment_id: equipmentId,
+      filter_manufacturer_id: manufacturerId,
+      filter_model_id: modelId,
+      filter_subsystem: subsystem,
+      filter_error_code: errorCode,
       result_limit: resultLimit,
     });
 
@@ -215,7 +281,7 @@ Deno.serve(async (request) => {
           anthropicKey,
           explanationModel,
           queryText,
-          { errorCode: body.errorCode, subsystem: body.subsystem },
+          { errorCode, subsystem },
           cases as CaseCandidate[],
         );
       } catch (error) {
@@ -236,11 +302,11 @@ Deno.serve(async (request) => {
         user_id: authData.user.id,
         query_text: queryText,
         filters: {
-          equipmentId: body.equipmentId ?? null,
-          manufacturerId: body.manufacturerId ?? null,
-          modelId: body.modelId ?? null,
-          subsystem: body.subsystem ?? null,
-          errorCode: body.errorCode ?? null,
+          equipmentId,
+          manufacturerId,
+          modelId,
+          subsystem,
+          errorCode,
         },
         retrieved_case_ids: retrievedCaseIds,
       })

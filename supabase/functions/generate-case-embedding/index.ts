@@ -12,6 +12,15 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Teto do texto enviado para gerar o embedding. O modelo aceita cerca de
+// 8 mil tokens; um diário muito longo estouraria esse limite e a chamada
+// falharia inteira. Cortar mantém o início — equipamento, falha, causa e
+// solução —, que é o que a busca mais usa.
+const MAX_SOURCE_LENGTH = 24000;
+
 async function sha256(text: string): Promise<string> {
   const bytes = new TextEncoder().encode(text);
   const digest = await crypto.subtle.digest("SHA-256", bytes);
@@ -43,8 +52,16 @@ Deno.serve(async (request) => {
       return jsonResponse({ error: "Server configuration is incomplete" }, 500);
     }
 
-    const { serviceCaseId } = await request.json() as { serviceCaseId?: string };
-    if (!serviceCaseId) return jsonResponse({ error: "serviceCaseId is required" }, 400);
+    let serviceCaseId: unknown;
+    try {
+      serviceCaseId = (await request.json() as { serviceCaseId?: unknown })
+        ?.serviceCaseId;
+    } catch (_) {
+      return jsonResponse({ error: "Request body must be JSON" }, 400);
+    }
+    if (typeof serviceCaseId !== "string" || !UUID_PATTERN.test(serviceCaseId)) {
+      return jsonResponse({ error: "serviceCaseId must be a UUID" }, 400);
+    }
 
     const userClient = createClient(supabaseUrl, anonKey, {
       global: { headers: { Authorization: authorization } },
@@ -136,7 +153,7 @@ Deno.serve(async (request) => {
       `Validação: ${serviceCase.validation_result ?? "não informada"}`,
       `Diário de andamento: ${progressText || "sem registros adicionais"}`,
       `Confiabilidade: ${serviceCase.solution_confidence}`,
-    ].join("\n");
+    ].join("\n").slice(0, MAX_SOURCE_LENGTH);
 
     const sourceHash = await sha256(sourceText);
     const serviceClient = createClient(supabaseUrl, serviceRoleKey);
