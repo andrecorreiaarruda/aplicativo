@@ -34,53 +34,23 @@ class SupabaseSyncGateway implements OfflineSyncRemote {
 
   @override
   Future<RemoteSyncSnapshot> pullSnapshot() async {
+    // Um leitor por download: as revisões são coletadas pelas próprias
+    // consultas, e um leitor compartilhado misturaria as de dois
+    // downloads que se cruzassem.
+    final reader = SupabaseServiceLogRepository(client: _client);
     final values = await Future.wait<dynamic>([
-      _repository.fetchEquipments(),
-      _repository.fetchCases(),
-      _repository.fetchEquipmentCatalog(),
-      _revisionRows('customers'),
-      _revisionRows('sites'),
-      _revisionRows('equipment_models'),
-      _revisionRows('equipments'),
-      _revisionRows('service_cases'),
+      reader.fetchEquipments(),
+      reader.fetchCases(),
+      reader.fetchEquipmentCatalog(),
     ]);
-
-    final revisions = <String, int>{};
-    _appendRevisions(revisions, 'customer', values[3]);
-    _appendRevisions(revisions, 'site', values[4]);
-    _appendRevisions(revisions, 'equipment_model', values[5]);
-    _appendRevisions(revisions, 'equipment', values[6]);
-    _appendRevisions(revisions, 'service_case', values[7]);
 
     return RemoteSyncSnapshot(
       equipment: values[0],
       cases: values[1],
       catalog: values[2],
-      revisions: revisions,
+      revisions: reader.takeRevisions(),
       serverTime: DateTime.now().toUtc(),
     );
-  }
-
-  Future<List<dynamic>> _revisionRows(String table) async {
-    final response = await _client
-        .from(table)
-        .select('id, sync_revision')
-        .isFilter('deleted_at', null);
-    return response as List<dynamic>;
-  }
-
-  static void _appendRevisions(
-    Map<String, int> target,
-    String entityType,
-    dynamic rows,
-  ) {
-    if (rows is! List) return;
-    for (final row in rows) {
-      final json = _map(row);
-      final id = json['id'] as String?;
-      if (id == null) continue;
-      target['$entityType:$id'] = (json['sync_revision'] as num?)?.toInt() ?? 1;
-    }
   }
 
   @override

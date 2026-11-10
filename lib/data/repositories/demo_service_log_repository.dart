@@ -329,7 +329,6 @@ class DemoServiceLogRepository
 
   Future<List<Equipment>> _fetchEquipments() async {
     await _ensureHydrated();
-    await _latency();
     // Arquivados continuam no armazenamento, mas fora das listagens.
     return List.unmodifiable(_equipment.where((item) => !item.isArchived));
   }
@@ -339,7 +338,6 @@ class DemoServiceLogRepository
 
   Future<List<ServiceCase>> _fetchCases() async {
     await _ensureHydrated();
-    await _latency();
     final result = _cases.where((item) => !item.isArchived).toList()
       ..sort((a, b) => b.openedAt.compareTo(a.openedAt));
     return List.unmodifiable(result);
@@ -351,7 +349,6 @@ class DemoServiceLogRepository
 
   Future<EquipmentCatalog> _fetchEquipmentCatalog() async {
     await _ensureHydrated();
-    await _latency();
     final ativos = _customers.where((item) => !item.isArchived).toList();
     final idsAtivos = ativos.map((item) => item.id).toSet();
     return EquipmentCatalog(
@@ -372,7 +369,6 @@ class DemoServiceLogRepository
 
   Future<String> _createEquipmentModel(EquipmentModelDraft draft) async {
     await _ensureHydrated();
-    await _latency();
     final manufacturer = draft.manufacturer.trim();
     final modelName = draft.model.trim();
     final existing = _models.where(
@@ -413,7 +409,6 @@ class DemoServiceLogRepository
 
   Future<String> _createCustomer(CustomerDraft draft) async {
     await _ensureHydrated();
-    await _latency();
     final name = draft.name.trim();
     final existing = _customers.where(
       (item) => item.name.toLowerCase() == name.toLowerCase(),
@@ -449,7 +444,6 @@ class DemoServiceLogRepository
 
   Future<void> _updateCustomer(String id, CustomerDraft draft) async {
     await _ensureHydrated();
-    await _latency();
     final index = _customers.indexWhere((item) => item.id == id);
     if (index < 0) throw StateError('Cliente não encontrado.');
 
@@ -522,7 +516,6 @@ class DemoServiceLogRepository
 
   Future<String> _createSite(SiteDraft draft) async {
     await _ensureHydrated();
-    await _latency();
     final customer = _customers.firstWhere(
       (item) => item.id == draft.customerId,
     );
@@ -560,7 +553,6 @@ class DemoServiceLogRepository
 
   Future<void> _updateSite(String id, SiteDraft draft) async {
     await _ensureHydrated();
-    await _latency();
     final index = _sites.indexWhere((item) => item.id == id);
     if (index < 0) throw StateError('Local não encontrado.');
     final customer = _customers.firstWhere(
@@ -650,7 +642,6 @@ class DemoServiceLogRepository
 
   Future<void> _createEquipment(EquipmentDraft draft) async {
     await _ensureHydrated();
-    await _latency();
     final serial = draft.serialNumber.trim();
 
     // O banco tem unique (organization_id, serial_number). Sem checar
@@ -719,7 +710,6 @@ class DemoServiceLogRepository
 
   Future<void> _updateEquipment(String id, EquipmentDraft draft) async {
     await _ensureHydrated();
-    await _latency();
     final index = _equipment.indexWhere((item) => item.id == id);
     if (index < 0) throw StateError('Equipamento não encontrado.');
 
@@ -840,7 +830,6 @@ class DemoServiceLogRepository
 
   Future<void> _archiveCustomer(String id) async {
     await _ensureHydrated();
-    await _latency();
     final index = _customers.indexWhere((item) => item.id == id);
     if (index < 0) throw StateError('Cliente não encontrado.');
     if (_customers[index].isArchived) return;
@@ -894,7 +883,6 @@ class DemoServiceLogRepository
 
   Future<void> _archiveEquipment(String id) async {
     await _ensureHydrated();
-    await _latency();
     final index = _equipment.indexWhere((item) => item.id == id);
     if (index < 0) throw StateError('Equipamento não encontrado.');
     if (_equipment[index].isArchived) return;
@@ -922,7 +910,6 @@ class DemoServiceLogRepository
 
   Future<void> _archiveCase(String id) async {
     await _ensureHydrated();
-    await _latency();
     final index = _cases.indexWhere((item) => item.id == id);
     if (index < 0) throw StateError('Atendimento não encontrado.');
     if (_cases[index].isArchived) return;
@@ -955,7 +942,6 @@ class DemoServiceLogRepository
 
   Future<void> _purgeCustomer(String id) async {
     await _ensureHydrated();
-    await _latency();
     final index = _customers.indexWhere((item) => item.id == id);
     if (index >= 0) {
       if (!_customers[index].isArchived) {
@@ -992,7 +978,6 @@ class DemoServiceLogRepository
 
   Future<void> _purgeEquipment(String id) async {
     await _ensureHydrated();
-    await _latency();
     final index = _equipment.indexWhere((item) => item.id == id);
     if (index >= 0) {
       if (!_equipment[index].isArchived) {
@@ -1021,7 +1006,6 @@ class DemoServiceLogRepository
 
   Future<void> _purgeCase(String id) async {
     await _ensureHydrated();
-    await _latency();
     final index = _cases.indexWhere((item) => item.id == id);
     if (index >= 0) {
       if (!_cases[index].isArchived) {
@@ -1071,7 +1055,6 @@ class DemoServiceLogRepository
 
   Future<void> _restoreCustomer(String id) async {
     await _ensureHydrated();
-    await _latency();
     final index = _customers.indexWhere((item) => item.id == id);
     if (index < 0) throw StateError('Cliente não encontrado.');
     final atual = _customers[index];
@@ -1101,7 +1084,6 @@ class DemoServiceLogRepository
 
   Future<void> _restoreEquipment(String id) async {
     await _ensureHydrated();
-    await _latency();
     final index = _equipment.indexWhere((item) => item.id == id);
     if (index < 0) throw StateError('Equipamento não encontrado.');
     _equipment[index] = _withArchivedAt(_equipment[index], null);
@@ -1118,7 +1100,6 @@ class DemoServiceLogRepository
 
   Future<void> _restoreCase(String id) async {
     await _ensureHydrated();
-    await _latency();
     final index = _cases.indexWhere((item) => item.id == id);
     if (index < 0) throw StateError('Atendimento não encontrado.');
     _cases[index] = _cases[index].copyWith(unarchive: true);
@@ -1185,7 +1166,6 @@ class DemoServiceLogRepository
 
   Future<void> _saveCase(ServiceCaseDraft draft) async {
     await _ensureHydrated();
-    await _latency();
     final equipment = _equipment.firstWhere(
       (item) => item.id == draft.equipmentId,
     );
@@ -1286,7 +1266,6 @@ class DemoServiceLogRepository
     SimilarCaseQuery query,
   ) async {
     await _ensureHydrated();
-    await _latency();
     final queryTokens = _tokens(
       '${query.text} ${query.errorCode ?? ''} ${query.subsystem ?? ''}',
     );
@@ -1749,7 +1728,6 @@ class DemoServiceLogRepository
     int? revision,
   }) => _mutex.run(() async {
     await _ensureHydrated();
-    final before = _encodeSnapshot();
     _stagedOperations.clear();
     try {
       final result = await action();
@@ -1762,7 +1740,18 @@ class DemoServiceLogRepository
       );
       return result;
     } catch (_) {
-      _restoreSnapshot(before);
+      // Desfaz o que a ação alterou em memória voltando ao último estado
+      // gravado. O armazenamento só muda no commit acima, que é atômico:
+      // se chegamos aqui, ele ainda tem a versão anterior inteira.
+      //
+      // Antes, o estado era serializado ANTES de cada ação, só para este
+      // caso. Era uma segunda codificação da base inteira a cada
+      // gravação — milissegundos que crescem com o histórico — para
+      // servir a um caminho que quase nunca acontece.
+      final committed = await _storage.readSnapshot(_namespace);
+      if (committed != null && committed.isNotEmpty) {
+        _restoreSnapshot(committed);
+      }
       rethrow;
     } finally {
       _stagedOperations.clear();
@@ -1940,9 +1929,6 @@ class DemoServiceLogRepository
         .map((item) => Map<String, dynamic>.from(item))
         .toList();
   }
-
-  Future<void> _latency() =>
-      Future<void>.delayed(const Duration(milliseconds: 120));
 
   static String _fallback(String? value, String fallback) {
     final cleaned = value?.trim();

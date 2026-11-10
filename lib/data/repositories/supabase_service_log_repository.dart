@@ -1,26 +1,44 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:uuid/uuid.dart';
 
 import '../sync/keyset_pagination.dart';
 
 import '../models/equipment.dart';
 import '../models/service_case.dart';
-import 'service_log_repository.dart';
 
-class SupabaseServiceLogRepository implements ServiceLogRepository {
+/// Leituras do Supabase: o download da sincronização, os arquivados e a
+/// busca por casos semelhantes.
+///
+/// Não grava. Toda gravação do aplicativo passa pela fila offline e chega
+/// ao servidor pela RPC `apply_offline_operation`, que é onde vivem as
+/// regras de revisão, de arquivamento e de exclusão. Esta classe já teve
+/// um caminho de escrita direta nas tabelas, de antes da fila; ele não
+/// era mais chamado e contornava essas regras, então saiu.
+class SupabaseServiceLogRepository {
   SupabaseServiceLogRepository({SupabaseClient? client})
     : _client = client ?? Supabase.instance.client;
 
   final SupabaseClient _client;
-  static const _uuid = Uuid();
 
-  @override
-  bool get isDemo => false;
+  /// Revisão de cada registro lido, por `tipo:id`, preenchida pelas
+  /// próprias consultas de download.
+  ///
+  /// Antes vinha de cinco consultas à parte, sem paginação: acima de mil
+  /// registros numa tabela, o PostgREST cortava a resposta em silêncio e
+  /// os registros de fora ficavam com revisão zero — o que desliga a
+  /// detecção de conflito no servidor justamente nas bases maiores.
+  final Map<String, int> _revisions = <String, int>{};
 
-  @override
+  /// Cópia das revisões coletadas até aqui. Chamar depois das leituras.
+  Map<String, int> takeRevisions() {
+    final copy = Map<String, int>.of(_revisions);
+    _revisions.clear();
+    return copy;
+  }
+
   Future<List<Equipment>> fetchEquipments() async {
-    final rows = await _fetchAll('equipments', '''
+    final rows = await _fetchAll('equipments', revisionsAs: 'equipment', '''
       id,
+      sync_revision,
       created_at,
       equipment_model_id,
       site_id,
@@ -58,10 +76,13 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
     return List.unmodifiable(ordered);
   }
 
-  @override
   Future<List<ServiceCase>> fetchCases() async {
-    final rows = await _fetchAll('service_cases', '''
+    final rows = await _fetchAll(
+      'service_cases',
+      revisionsAs: 'service_case',
+      '''
       id,
+      sync_revision,
       case_number,
       equipment_id,
       status,
@@ -98,7 +119,8 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
           manufacturers(name)
         )
       )
-    ''');
+    ''',
+    );
 
     // O limite de 300 saiu daqui: truncava o histórico sem aviso, e
     // o PostgREST ainda somava o próprio corte por cima. A ordenação
@@ -108,21 +130,22 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
     return List.unmodifiable(cases);
   }
 
-  @override
   Future<EquipmentCatalog> fetchEquipmentCatalog() async {
     // As três consultas também eram cortadas pelo PostgREST, em silêncio.
     // Nenhuma tinha limite explícito, o que tornava o truncamento ainda
     // menos visível que o dos atendimentos.
     final responses = await Future.wait<List<Map<String, dynamic>>>([
-      _fetchAll('equipment_models', '''
+      _fetchAll('equipment_models', revisionsAs: 'equipment_model', '''
         id,
+        sync_revision,
         family,
         model,
         modality,
         manufacturers(name)
       '''),
-      _fetchAll('customers', '''
+      _fetchAll('customers', revisionsAs: 'customer', '''
         id,
+        sync_revision,
         name,
         tax_id,
         contact_name,
@@ -133,8 +156,9 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
         state,
         notes
       '''),
-      _fetchAll('sites', '''
+      _fetchAll('sites', revisionsAs: 'site', '''
         id,
+        sync_revision,
         customer_id,
         name,
         city,
@@ -204,300 +228,6 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
     );
   }
 
-  @override
-  Future<String> createEquipmentModel(EquipmentModelDraft draft) async {
-    final organizationId = await _organizationId();
-    final manufacturerName = draft.manufacturer.trim();
-    final modelName = draft.model.trim();
-
-    final manufacturerRows = await _client
-        .from('manufacturers')
-        .select('id, name');
-    final manufacturers = (manufacturerRows as List).map(_map).toList();
-    final manufacturerMatch = manufacturers.where(
-      (item) =>
-          (item['name'] as String? ?? '').toLowerCase() ==
-          manufacturerName.toLowerCase(),
-    );
-
-    late final String manufacturerId;
-    if (manufacturerMatch.isNotEmpty) {
-      manufacturerId = manufacturerMatch.first['id'] as String;
-    } else {
-      final created = await _client
-          .from('manufacturers')
-          .insert({'organization_id': organizationId, 'name': manufacturerName})
-          .select('id')
-          .single();
-      manufacturerId = created['id'] as String;
-    }
-
-    final modelRows = await _client
-        .from('equipment_models')
-        .select('id, model')
-        .eq('manufacturer_id', manufacturerId);
-    final modelMatch = (modelRows as List)
-        .map(_map)
-        .where(
-          (item) =>
-              (item['model'] as String? ?? '').toLowerCase() ==
-              modelName.toLowerCase(),
-        );
-    if (modelMatch.isNotEmpty) return modelMatch.first['id'] as String;
-
-    final created = await _client
-        .from('equipment_models')
-        .insert({
-          'organization_id': organizationId,
-          'manufacturer_id': manufacturerId,
-          'family': _blankToNull(draft.family),
-          'model': modelName,
-          'modality': _fallback(draft.modality, 'Não informada'),
-          'description': _blankToNull(draft.description),
-        })
-        .select('id')
-        .single();
-    return created['id'] as String;
-  }
-
-  @override
-  Future<String> createCustomer(CustomerDraft draft) async {
-    final organizationId = await _organizationId();
-    final name = draft.name.trim();
-    final rows = await _client.from('customers').select('id, name');
-    final match = (rows as List)
-        .map(_map)
-        .where(
-          (item) =>
-              (item['name'] as String? ?? '').toLowerCase() ==
-              name.toLowerCase(),
-        );
-    if (match.isNotEmpty) return match.first['id'] as String;
-
-    final created = await _client
-        .from('customers')
-        .insert({
-          'organization_id': organizationId,
-          'name': name,
-          'tax_id': _blankToNull(draft.taxId),
-          'contact_name': _blankToNull(draft.contactName),
-          'email': _blankToNull(draft.email),
-          'phone': _blankToNull(draft.phone),
-          'address_line': _blankToNull(draft.addressLine),
-          'city': _blankToNull(draft.city),
-          'state': _blankToNull(draft.state),
-          'notes': _blankToNull(draft.notes),
-        })
-        .select('id')
-        .single();
-    return created['id'] as String;
-  }
-
-  @override
-  Future<void> updateCustomer(String id, CustomerDraft draft) async {
-    await _client
-        .from('customers')
-        .update({
-          'name': draft.name.trim(),
-          'tax_id': _blankToNull(draft.taxId),
-          'contact_name': _blankToNull(draft.contactName),
-          'email': _blankToNull(draft.email),
-          'phone': _blankToNull(draft.phone),
-          'address_line': _blankToNull(draft.addressLine),
-          'city': _blankToNull(draft.city),
-          'state': _blankToNull(draft.state),
-          'notes': _blankToNull(draft.notes),
-        })
-        .eq('id', id);
-  }
-
-  @override
-  Future<String> createSite(SiteDraft draft) async {
-    final organizationId = await _organizationId();
-    final siteName = draft.siteName.trim();
-    final rows = await _client
-        .from('sites')
-        .select('id, name')
-        .eq('customer_id', draft.customerId);
-    final match = (rows as List)
-        .map(_map)
-        .where(
-          (item) =>
-              (item['name'] as String? ?? '').toLowerCase() ==
-              siteName.toLowerCase(),
-        );
-    if (match.isNotEmpty) return match.first['id'] as String;
-
-    final created = await _client
-        .from('sites')
-        .insert({
-          'organization_id': organizationId,
-          'customer_id': draft.customerId,
-          'name': siteName,
-          'city': _blankToNull(draft.city),
-          'state': _blankToNull(draft.state),
-          'notes': _blankToNull(draft.notes),
-        })
-        .select('id')
-        .single();
-    return created['id'] as String;
-  }
-
-  @override
-  Future<void> updateSite(String id, SiteDraft draft) async {
-    await _client
-        .from('sites')
-        .update({
-          'customer_id': draft.customerId,
-          'name': draft.siteName.trim(),
-          'city': _blankToNull(draft.city),
-          'state': _blankToNull(draft.state),
-          'notes': _blankToNull(draft.notes),
-        })
-        .eq('id', id);
-  }
-
-  @override
-  Future<String> createCustomerSite(CustomerSiteDraft draft) async {
-    final customerId = await createCustomer(
-      CustomerDraft(
-        name: draft.customerName,
-        taxId: draft.taxId,
-        contactName: draft.contactName,
-        email: draft.email,
-        phone: draft.phone,
-        addressLine: draft.addressLine,
-        city: draft.customerCity,
-        state: draft.customerState,
-        notes: draft.customerNotes,
-      ),
-    );
-    return createSite(
-      SiteDraft(
-        customerId: customerId,
-        siteName: draft.siteName,
-        city: draft.siteCity ?? draft.city,
-        state: draft.siteState ?? draft.state,
-        notes: draft.siteNotes,
-      ),
-    );
-  }
-
-  @override
-  Future<void> createEquipment(EquipmentDraft draft) async {
-    final organizationId = await _organizationId();
-    await _client.from('equipments').insert({
-      'organization_id': organizationId,
-      'equipment_model_id': draft.modelId,
-      'site_id': _blankToNull(draft.siteId),
-      'serial_number': _blankToNull(draft.serialNumber),
-      'software_version': _blankToNull(draft.softwareVersion),
-      'hardware_version': _blankToNull(draft.hardwareVersion),
-      'status': draft.status,
-      'notes': _blankToNull(draft.notes),
-      'created_by': _client.auth.currentUser?.id,
-    });
-  }
-
-  @override
-  Future<void> updateEquipment(String id, EquipmentDraft draft) async {
-    await _client
-        .from('equipments')
-        .update({
-          'equipment_model_id': draft.modelId,
-          'site_id': draft.siteId,
-          'serial_number': _blankToNull(draft.serialNumber),
-          'software_version': _blankToNull(draft.softwareVersion),
-          'hardware_version': _blankToNull(draft.hardwareVersion),
-          'status': draft.status,
-          'notes': _blankToNull(draft.notes),
-        })
-        .eq('id', id);
-  }
-
-  @override
-  Future<void> saveCase(ServiceCaseDraft draft) async {
-    final organizationId = await _organizationId();
-    final resolved = draft.status == 'resolved';
-    final payload = <String, dynamic>{
-      'organization_id': organizationId,
-      'equipment_id': draft.equipmentId,
-      'status': draft.status,
-      'activity_type': draft.activityType,
-      'reported_failure': draft.reportedFailure.trim(),
-      'observed_symptoms': _blankToNull(draft.observedSymptoms),
-      'error_code': _blankToNull(draft.errorCode),
-      'error_message': _blankToNull(draft.errorMessage),
-      'subsystem': _blankToNull(draft.subsystem),
-      'operational_impact': draft.operationalImpact,
-      'measurements': _blankToNull(draft.measurements),
-      'root_cause': _blankToNull(draft.rootCause),
-      'solution_details': _blankToNull(draft.solutionDetails),
-      'validation_result': _blankToNull(draft.validationResult),
-      'final_equipment_status': resolved ? draft.finalEquipmentStatus : null,
-      'solution_confidence': draft.solutionConfidence,
-      // downtime_minutes e service_minutes não são enviados: são derivados
-      // no servidor a partir das sessões do diário e do impacto operacional.
-      'requires_follow_up': draft.requiresFollowUp,
-      'follow_up_notes': _blankToNull(draft.followUpNotes),
-      'safety_notes': _blankToNull(draft.safetyNotes),
-      // Datas informadas prevalecem, para permitir carga de histórico.
-      // Sem elas o banco aplica o padrão de opened_at (now()) na criação
-      // e mantém o valor existente na atualização.
-      if (draft.openedAt != null)
-        'opened_at': draft.openedAt!.toUtc().toIso8601String(),
-      'closed_at': resolved
-          ? (draft.closedAt ?? DateTime.now()).toUtc().toIso8601String()
-          : null,
-    };
-
-    late final String serviceCaseId;
-    if (draft.id == null) {
-      final created = await _client
-          .from('service_cases')
-          .insert(payload)
-          .select('id')
-          .single();
-      serviceCaseId = created['id'] as String;
-    } else {
-      serviceCaseId = draft.id!;
-      await _client
-          .from('service_cases')
-          .update(payload)
-          .eq('id', serviceCaseId);
-    }
-
-    await _client
-        .from('service_progress_entries')
-        .delete()
-        .eq('service_case_id', serviceCaseId);
-
-    final progressPayload = draft.progressEntries
-        .map(
-          (entry) => {
-            'organization_id': organizationId,
-            'service_case_id': serviceCaseId,
-            'occurred_at': entry.occurredAt.toIso8601String(),
-            'ended_at': entry.endedAt?.toIso8601String(),
-            'description': entry.description.trim(),
-          },
-        )
-        .where((entry) => entry['description']?.isNotEmpty == true)
-        .toList();
-
-    if (progressPayload.isNotEmpty) {
-      await _client.from('service_progress_entries').insert(progressPayload);
-    }
-
-    if (resolved) {
-      try {
-        await indexResolvedCase(serviceCaseId);
-      } catch (_) {
-        // O atendimento permanece salvo mesmo se a indexação estiver indisponível.
-      }
-    }
-  }
-
   /// Chama a Edge Function `generate-case-embedding` para o atendimento
   /// informado. A própria função só indexa quando `status = 'resolved'`
   /// (ela consulta o registro com a sessão do usuário e valida isso do
@@ -513,7 +243,6 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
     }
   }
 
-  @override
   Future<List<SimilarCaseResult>> searchSimilarCases(
     SimilarCaseQuery query,
   ) async {
@@ -602,73 +331,6 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
     );
   }
 
-  // -----------------------------------------------------------------------
-  // Arquivamento
-  // -----------------------------------------------------------------------
-  // A validação de dependências é responsabilidade do servidor: a RPC
-  // `apply_offline_operation` recusa o arquivamento e devolve conflito.
-  // Estes caminhos diretos são usados apenas quando o aplicativo fala com
-  // o Supabase sem passar pela fila offline.
-
-  Future<void> _setDeletedAt(String table, String id, DateTime? value) async {
-    await _client
-        .from(table)
-        .update({'deleted_at': value?.toUtc().toIso8601String()})
-        .eq('id', id);
-  }
-
-  @override
-  Future<void> archiveCustomer(String id) =>
-      _setDeletedAt('customers', id, DateTime.now());
-
-  @override
-  Future<void> archiveEquipment(String id) =>
-      _setDeletedAt('equipments', id, DateTime.now());
-
-  @override
-  Future<void> archiveCase(String id) =>
-      _setDeletedAt('service_cases', id, DateTime.now());
-
-  @override
-  Future<void> restoreCustomer(String id) =>
-      _setDeletedAt('customers', id, null);
-
-  @override
-  Future<void> restoreEquipment(String id) =>
-      _setDeletedAt('equipments', id, null);
-
-  @override
-  Future<void> restoreCase(String id) =>
-      _setDeletedAt('service_cases', id, null);
-
-  /// Exclusão definitiva direta, sem passar pela fila. As travas de
-  /// arquivamento prévio, papel e dependentes vivem no servidor, em
-  /// `apply_purge_operation`; este caminho existe para completar a
-  /// interface e é usado quando não há espelho local envolvido.
-  Future<void> _purge(String entityType, String id) async {
-    await _client.rpc(
-      'apply_offline_operation',
-      params: {
-        'p_operation_id': _uuid.v4(),
-        'p_entity_type': entityType,
-        'p_entity_id': id,
-        'p_operation': 'purge',
-        'p_payload': {'id': id},
-        'p_expected_revision': 0,
-      },
-    );
-  }
-
-  @override
-  Future<void> purgeCustomer(String id) => _purge('customer', id);
-
-  @override
-  Future<void> purgeEquipment(String id) => _purge('equipment', id);
-
-  @override
-  Future<void> purgeCase(String id) => _purge('service_case', id);
-
-  @override
   Future<ArchivedRecords> fetchArchived() async {
     // Arquivados também eram cortados pelo PostgREST. Mesma paginação.
     final results = await Future.wait<List<Map<String, dynamic>>>([
@@ -765,20 +427,6 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
     );
   }
 
-  @override
-  Future<void> signOut() => _client.auth.signOut();
-
-  Future<String> _organizationId() async {
-    final user = _client.auth.currentUser;
-    if (user == null) throw StateError('Sessão não autenticada.');
-    final profile = await _client
-        .from('profiles')
-        .select('organization_id')
-        .eq('user_id', user.id)
-        .single();
-    return profile['organization_id'] as String;
-  }
-
   /// Lê a tabela inteira, em páginas, em vez de aceitar o corte do
   /// PostgREST. Percorre por `id` porque a ordem de exibição não pode
   /// servir de cursor: `name` e `created_at` repetem, e chave repetida
@@ -791,8 +439,9 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
     String table,
     String columns, {
     bool? archived = false,
-  }) {
-    return fetchAllPages<Map<String, dynamic>>(
+    String? revisionsAs,
+  }) async {
+    final rows = await fetchAllPages<Map<String, dynamic>>(
       keyOf: (row) => row['id'] as String,
       readPage: (after, limit) async {
         var query = _client.from(table).select(columns);
@@ -803,6 +452,13 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
         return (page as List).map(_map).toList(growable: false);
       },
     );
+    if (revisionsAs != null) {
+      for (final row in rows) {
+        _revisions['$revisionsAs:${row['id']}'] =
+            (row['sync_revision'] as num?)?.toInt() ?? 1;
+      }
+    }
+    return rows;
   }
 
   static Map<String, dynamic> _map(dynamic value) {
@@ -814,11 +470,6 @@ class SupabaseServiceLogRepository implements ServiceLogRepository {
   static Map<String, dynamic> _firstMap(dynamic value) {
     if (value is List && value.isNotEmpty) return _map(value.first);
     return _map(value);
-  }
-
-  static String _fallback(String? value, String fallback) {
-    final cleaned = value?.trim();
-    return cleaned == null || cleaned.isEmpty ? fallback : cleaned;
   }
 
   static String? _blankToNull(String? value) {
