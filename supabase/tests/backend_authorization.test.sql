@@ -126,7 +126,7 @@ select ok(not has_table_privilege('authenticated','public.customers','TRUNCATE')
 select pg_temp.actor('technician-a');
 select lives_ok($q$insert into public.customers(organization_id,name) values (pg_temp.id('org-a'),'technician-direct')$q$, 'technician direct create allowed');
 with changed as (update public.customers set notes='edited' where name='technician-direct' returning 1) select is((select count(*) from changed),1::bigint,'technician direct update allowed');
-with changed as (delete from public.customers where name='technician-direct' returning 1) select is((select count(*) from changed),1::bigint,'technician direct delete allowed');
+with changed as (delete from public.customers where name='technician-direct' returning 1) select is((select count(*) from changed),0::bigint,'technician direct delete denied: exclusão é só do administrador');
 select lives_ok($q$select pg_temp.replay('customer','technician-customer')$q$, 'technician RPC can create customer');
 select lives_ok($q$select pg_temp.replay('customer','technician-customer','edit-technician-customer')$q$, 'technician RPC can update customer');
 select lives_ok($q$select pg_temp.replay('site','technician-site')$q$, 'technician RPC can create site');
@@ -157,7 +157,7 @@ select throws_ok($q$select pg_temp.replay('equipment_model','model-global','glob
 select pg_temp.actor('manager-a');
 select lives_ok($q$insert into public.customers(organization_id,name) values (pg_temp.id('org-a'),'manager-direct')$q$, 'manager direct create allowed');
 with changed as (update public.customers set notes='edited' where name='manager-direct' returning 1) select is((select count(*) from changed),1::bigint,'manager direct update allowed');
-with changed as (delete from public.customers where name='manager-direct' returning 1) select is((select count(*) from changed),1::bigint,'manager direct delete allowed');
+with changed as (delete from public.customers where name='manager-direct' returning 1) select is((select count(*) from changed),0::bigint,'manager direct delete denied: exclusão é só do administrador');
 select lives_ok($q$select pg_temp.replay('customer','manager-customer')$q$, 'manager RPC can create customer');
 select lives_ok($q$select pg_temp.replay('customer','manager-customer','edit-manager-customer')$q$, 'manager RPC can update customer');
 select lives_ok($q$select pg_temp.replay('site','manager-site')$q$, 'manager RPC can create site');
@@ -188,7 +188,7 @@ select throws_ok($q$select pg_temp.replay('equipment_model','model-global','glob
 select pg_temp.actor('engineer-a');
 select lives_ok($q$insert into public.customers(organization_id,name) values (pg_temp.id('org-a'),'engineer-direct')$q$, 'engineer direct create allowed');
 with changed as (update public.customers set notes='edited' where name='engineer-direct' returning 1) select is((select count(*) from changed),1::bigint,'engineer direct update allowed');
-with changed as (delete from public.customers where name='engineer-direct' returning 1) select is((select count(*) from changed),1::bigint,'engineer direct delete allowed');
+with changed as (delete from public.customers where name='engineer-direct' returning 1) select is((select count(*) from changed),0::bigint,'engineer direct delete denied: exclusão é só do administrador');
 select lives_ok($q$select pg_temp.replay('customer','engineer-customer')$q$, 'engineer RPC can create customer');
 select lives_ok($q$select pg_temp.replay('customer','engineer-customer','edit-engineer-customer')$q$, 'engineer RPC can update customer');
 select lives_ok($q$select pg_temp.replay('site','engineer-site')$q$, 'engineer RPC can create site');
