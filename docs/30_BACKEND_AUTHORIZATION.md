@@ -12,11 +12,19 @@ As migrations 0001–0010 não foram alteradas.
 |---|---|---|---|
 | Consultar dados da própria organização | Sim | Sim | Sim |
 | Consultar catálogo global | Sim | Sim | Sim |
-| Criar/editar/excluir dados operacionais da própria organização | Não | Sim | Sim |
+| Criar/editar dados operacionais da própria organização | Não | Sim | Sim |
+| Excluir clientes, locais, equipamentos e atendimentos | Não | Não | Só administrador |
 | Criar fabricante/modelo/modelo de OS da própria organização | Não | Sim | Sim |
 | Editar/excluir catálogo e modelos de OS da própria organização | Não | Não | Sim |
 | Alterar catálogo global | Não | Não | Não |
 | Gravar em outra organização | Não | Não | Não |
+
+A linha de exclusão vale desde a migration
+`20261110120000_review_hardening.sql`. Antes dela, técnico, gestor e
+engenheiro apagavam a linha direto pela API, contornando as travas da
+exclusão definitiva (só administrador, só arquivado, sem dependentes). O
+diário, os passos de diagnóstico e os anexos continuam removíveis por quem
+edita o atendimento.
 
 Políticas especiais existentes continuam em vigor: gestão de perfis é do
 administrador; resolução de conflitos é de administrador/engenheiro;
