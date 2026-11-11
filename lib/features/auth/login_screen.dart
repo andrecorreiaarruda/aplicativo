@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/errors/error_messages.dart';
 import '../../core/theme/orion_theme.dart';
 import '../../shared/widgets/orion_brand.dart';
 import 'password_recovery_screen.dart';
@@ -22,6 +23,33 @@ String? signUpFeedback({
         'Se a esqueceu, peça a redefinição ao administrador.';
   }
   return 'Conta criada. Confirme o e-mail antes de entrar no sistema.';
+}
+
+/// Mensagem de erro do login em português.
+///
+/// O Supabase responde em inglês. O código do erro é conferido antes do
+/// texto, que muda entre versões do servidor.
+String describeLoginError(String message, {String? code}) {
+  final lower = message.toLowerCase();
+  if (code == 'invalid_credentials' || lower.contains('invalid login')) {
+    return 'E-mail ou senha incorretos.';
+  }
+  if (code == 'email_not_confirmed' || lower.contains('not confirmed')) {
+    return 'Confirme o e-mail pelo link que enviamos antes de entrar.';
+  }
+  if (code == 'user_already_exists' || lower.contains('already registered')) {
+    return 'Este e-mail já tem conta. Use "Entrar".';
+  }
+  if (code == 'weak_password' || lower.contains('password should')) {
+    return 'Senha fraca. Use pelo menos 8 caracteres.';
+  }
+  if (code == 'over_request_rate_limit' ||
+      code == 'over_email_send_rate_limit' ||
+      lower.contains('rate limit') ||
+      lower.contains('too many')) {
+    return 'Muitas tentativas em pouco tempo. Aguarde alguns minutos.';
+  }
+  return describeError(message);
 }
 
 class LoginScreen extends StatefulWidget {
@@ -73,9 +101,13 @@ class _LoginScreenState extends State<LoginScreen> {
         );
       }
     } on AuthException catch (error) {
-      if (mounted) setState(() => _message = error.message);
+      if (mounted) {
+        setState(
+          () => _message = describeLoginError(error.message, code: error.code),
+        );
+      }
     } catch (error) {
-      if (mounted) setState(() => _message = error.toString());
+      if (mounted) setState(() => _message = describeError(error));
     } finally {
       if (mounted) setState(() => _loading = false);
     }

@@ -137,54 +137,42 @@ class _Metrics extends StatelessWidget {
             : constraints.maxWidth >= 600
             ? 3
             : 2;
-        final width = constraints.maxWidth / columns;
+        // Linhas de altura igual: num Wrap, cada célula teria a altura
+        // do próprio texto e as divisórias ficariam desencontradas.
+        final rows = [
+          for (var i = 0; i < items.length; i += columns)
+            items.sublist(i, (i + columns).clamp(0, items.length)),
+        ];
         return DecoratedBox(
           decoration: BoxDecoration(
             color: palette.surface,
             border: Border.all(color: palette.border),
             borderRadius: BorderRadius.circular(OrionTheme.radiusLarge),
           ),
-          child: Wrap(
+          child: Column(
             children: [
-              for (final (index, (label, value, detail)) in items.indexed)
-                Container(
-                  width: width,
-                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-                  decoration: BoxDecoration(
-                    border: Border(
-                      left: index % columns == 0
-                          ? BorderSide.none
-                          : BorderSide(color: palette.border),
-                      top: index < columns
-                          ? BorderSide.none
-                          : BorderSide(color: palette.border),
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+              for (final (rowIndex, row) in rows.indexed) ...[
+                if (rowIndex > 0) const Divider(height: 1),
+                IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text(
-                        label,
-                        style: TextStyle(
-                          color: palette.textMuted,
-                          fontSize: 13,
+                      for (var column = 0; column < columns; column++) ...[
+                        if (column > 0) const VerticalDivider(width: 1),
+                        Expanded(
+                          child: column < row.length
+                              ? _MetricCell(
+                                  label: row[column].$1,
+                                  value: row[column].$2,
+                                  detail: row[column].$3,
+                                )
+                              : const SizedBox.shrink(),
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        value,
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w600,
-                          color: palette.emphasis,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      MetaText(detail, maxLines: 2),
+                      ],
                     ],
                   ),
                 ),
+              ],
             ],
           ),
         );
@@ -218,6 +206,44 @@ class _Metrics extends StatelessWidget {
   }
 }
 
+class _MetricCell extends StatelessWidget {
+  const _MetricCell({
+    required this.label,
+    required this.value,
+    required this.detail,
+  });
+
+  final String label;
+  final String value;
+  final String detail;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.orion;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: TextStyle(color: palette.textMuted, fontSize: 13)),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w600,
+              color: palette.emphasis,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+          const SizedBox(height: 2),
+          MetaText(detail, maxLines: 2),
+        ],
+      ),
+    );
+  }
+}
+
 class _CaseGroup extends StatelessWidget {
   const _CaseGroup({
     required this.title,
@@ -242,10 +268,7 @@ class _CaseGroup extends StatelessWidget {
         Row(
           children: [
             Expanded(
-              child: Text(
-                title,
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
+              child: Text(title, style: Theme.of(context).textTheme.titleSmall),
             ),
             TextButton(onPressed: onMore, child: const Text('Ver todos')),
           ],

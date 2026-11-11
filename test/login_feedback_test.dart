@@ -27,4 +27,33 @@ void main() {
       );
     });
   });
+
+  group('erros de login em português', () {
+    test('credenciais erradas', () {
+      expect(
+        describeLoginError('Invalid login credentials'),
+        'E-mail ou senha incorretos.',
+      );
+      expect(
+        describeLoginError('qualquer texto', code: 'invalid_credentials'),
+        'E-mail ou senha incorretos.',
+      );
+    });
+
+    test('e-mail não confirmado', () {
+      expect(
+        describeLoginError('Email not confirmed'),
+        contains('Confirme o e-mail'),
+      );
+    });
+
+    test('sem rede', () {
+      expect(
+        describeLoginError(
+          'ClientException with SocketException: Failed host lookup',
+        ),
+        startsWith('Sem conexão com o servidor.'),
+      );
+    });
+  });
 }

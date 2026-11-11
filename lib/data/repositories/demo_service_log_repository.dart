@@ -1776,7 +1776,31 @@ class DemoServiceLogRepository
   Future<void> _persist() =>
       _storage.writeSnapshot(_namespace, _encodeSnapshot());
 
-  String _encodeSnapshot() => jsonEncode({
+  /// JSON de cada atendimento, guardado junto do objeto.
+  ///
+  /// Os atendimentos são imutáveis: editar um cria outro objeto, e o texto
+  /// antigo vai embora com o objeto antigo. Sem isto, cada gravação —
+  /// salvar um cliente, arquivar um equipamento — recodificava o histórico
+  /// inteiro de atendimentos, que é quase todo o tamanho da base.
+  static final _encodedCase = Expando<String>('atendimentoCodificado');
+
+  String _encodeSnapshot() {
+    final rest = _encodeWithoutCases();
+    final buffer = StringBuffer()
+      // `rest` é um objeto JSON com outras chaves: tira-se a chave de
+      // fechamento e os atendimentos entram como mais uma.
+      ..write(rest.substring(0, rest.length - 1))
+      ..write(',"cases":[');
+    for (var i = 0; i < _cases.length; i++) {
+      if (i > 0) buffer.write(',');
+      final item = _cases[i];
+      buffer.write(_encodedCase[item] ??= jsonEncode(_caseToJson(item)));
+    }
+    buffer.write(']}');
+    return buffer.toString();
+  }
+
+  String _encodeWithoutCases() => jsonEncode({
     'models': _models
         .map(
           (item) => {
@@ -1839,7 +1863,6 @@ class DemoServiceLogRepository
           },
         )
         .toList(),
-    'cases': _cases.map(_caseToJson).toList(),
     'equipmentSequence': _equipmentSequence,
     'caseSequence': _caseSequence,
     'catalogSequence': _catalogSequence,

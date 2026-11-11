@@ -110,7 +110,7 @@ class OrionPalette extends ThemeExtension<OrionPalette> {
   static const dark = OrionPalette(
     emphasis: Color(0xFFE3E7EC),
     brandDeep: Color(0xFF101318),
-    accent: Color(0xFF7CB0E6),
+    accent: Color(0xFF6C9BD2),
     accentBright: Color(0xFF3FD0E8),
     accentSoft: Color(0xFF242B34),
     surface: Color(0xFF1B1E23),
@@ -252,13 +252,22 @@ abstract final class OrionTheme {
             fontSize: 18,
             fontWeight: FontWeight.w600,
           ),
+          // O menu suspenso do Flutter usa titleMedium para o valor
+          // escolhido. Em negrito, ele destoava dos campos de texto ao
+          // lado; fica com o mesmo peso e tamanho deles.
           titleMedium: base.textTheme.titleMedium?.copyWith(
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
+            fontSize: 14.5,
+            fontWeight: FontWeight.w400,
+            letterSpacing: 0,
           ),
           titleSmall: base.textTheme.titleSmall?.copyWith(
-            fontSize: 13.5,
+            fontSize: 14.5,
             fontWeight: FontWeight.w600,
+            letterSpacing: 0,
+          ),
+          bodyLarge: base.textTheme.bodyLarge?.copyWith(
+            fontSize: 14.5,
+            letterSpacing: 0,
           ),
           bodyMedium: base.textTheme.bodyMedium?.copyWith(fontSize: 14),
           bodySmall: base.textTheme.bodySmall?.copyWith(fontSize: 12.5),

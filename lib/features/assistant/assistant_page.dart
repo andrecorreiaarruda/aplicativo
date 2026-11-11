@@ -214,7 +214,7 @@ class _AssistantPageState extends State<AssistantPage> {
             _results.length == 1
                 ? '1 caso parecido'
                 : '${_results.length} casos parecidos',
-            style: Theme.of(context).textTheme.titleMedium,
+            style: Theme.of(context).textTheme.titleSmall,
           ),
           const SizedBox(height: 12),
           ..._results.map(

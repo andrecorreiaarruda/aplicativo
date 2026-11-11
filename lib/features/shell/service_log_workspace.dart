@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/errors/error_messages.dart';
 import '../../core/theme/orion_theme.dart';
 import '../../data/repositories/service_log_repository.dart';
 import '../../shared/widgets/orion_brand.dart';
@@ -220,7 +221,8 @@ class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace>
               if (_controller.syncStatus?.lastError != null) ...[
                 const SizedBox(height: 10),
                 Text(
-                  'Último erro: ${_controller.syncStatus!.lastError}',
+                  'Último erro: '
+                  '${describeError(_controller.syncStatus!.lastError!)}',
                   style: TextStyle(color: context.orion.danger),
                 ),
               ],

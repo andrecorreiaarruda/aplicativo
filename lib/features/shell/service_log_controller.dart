@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../../core/errors/error_messages.dart';
 import '../../data/models/dashboard_snapshot.dart';
 import '../../data/models/equipment.dart';
 import '../../data/models/service_case.dart';
@@ -355,7 +356,9 @@ class ServiceLogController extends ChangeNotifier {
   }
 
   void _scheduleRetry() {
-    if (repository.isDemo || _retryTimer?.isActive == true) return;
+    if (_disposed || repository.isDemo || _retryTimer?.isActive == true) {
+      return;
+    }
     final seconds = switch (_retryAttempt) {
       0 => 15,
       1 => 30,
@@ -365,22 +368,26 @@ class ServiceLogController extends ChangeNotifier {
     };
     _retryAttempt++;
     _retryTimer = Timer(Duration(seconds: seconds), () {
-      unawaited(syncNow(silent: true));
+      if (!_disposed) unawaited(syncNow(silent: true));
     });
+  }
+
+  bool _disposed = false;
+
+  /// Uma sincronização em andamento pode terminar depois de a tela ter
+  /// sido fechada — ao sair da conta no meio dela, por exemplo. Avisar um
+  /// controlador já descartado lança erro; o aviso passa a ser ignorado.
+  @override
+  void notifyListeners() {
+    if (!_disposed) super.notifyListeners();
   }
 
   @override
   void dispose() {
+    _disposed = true;
     _retryTimer?.cancel();
     super.dispose();
   }
 
-  static String _message(Object error) {
-    final text = error.toString();
-    return text.startsWith('Exception: ')
-        ? text.substring('Exception: '.length)
-        : text.startsWith('Bad state: ')
-        ? text.substring('Bad state: '.length)
-        : text;
-  }
+  static String _message(Object error) => describeError(error);
 }

@@ -447,7 +447,6 @@ class _EquipmentFormState extends State<EquipmentForm> {
                               decoration: InputDecoration(
                                 hintText:
                                     'Digite o hospital, clínica, sala, bunker ou cidade',
-                                prefixIcon: const Icon(Icons.business_outlined),
                                 helperText:
                                     'Selecione uma correspondência ou cadastre o cliente/local sem sair do equipamento.',
                                 suffixIcon: textEditingController.text.isEmpty

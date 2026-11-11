@@ -250,21 +250,17 @@ class _CaseFormState extends State<CaseForm> {
                   children: [
                     Text(
                       widget.initialCase == null
-                          ? 'Novo atendimento técnico'
-                          : 'Atendimento #${widget.initialCase!.caseNumber}',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    Text(
-                      '${ServiceActivityType.label(_activityType)} com histórico contínuo no mesmo atendimento.',
+                          ? 'Novo atendimento'
+                          : 'Atendimento ${widget.initialCase!.caseNumber}',
+                      style: Theme.of(context).textTheme.titleLarge,
                     ),
                   ],
                 ),
               ),
               IconButton(
+                tooltip: 'Fechar',
                 onPressed: () => Navigator.of(context).pop(),
-                icon: const Icon(Icons.close_rounded),
+                icon: const Icon(Icons.close),
               ),
             ],
           ),
@@ -487,9 +483,7 @@ class _OpeningStep extends StatelessWidget {
           label: 'Classificação do atendimento',
           child: DropdownButtonFormField<String>(
             initialValue: activityType,
-            decoration: const InputDecoration(
-              prefixIcon: Icon(Icons.category_outlined),
-            ),
+            decoration: const InputDecoration(),
             items: ServiceActivityType.values
                 .map(
                   (value) => DropdownMenuItem(
