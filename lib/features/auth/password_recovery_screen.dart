@@ -95,7 +95,7 @@ class _PasswordRecoveryScreenState extends State<PasswordRecoveryScreen> {
                 Text(
                   _codeSent ? 'Digite o código' : 'Esqueceu a senha?',
                   style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -116,7 +116,7 @@ class _PasswordRecoveryScreenState extends State<PasswordRecoveryScreen> {
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: context.orion.danger.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
                       _error!,

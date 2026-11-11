@@ -176,7 +176,7 @@ class _Aviso extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: context.orion.warning.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color: context.orion.warning.withValues(alpha: 0.35),
         ),
@@ -250,7 +250,7 @@ class _ConflictCard extends StatelessWidget {
             Text(
               conflito.recordLabel,
               style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w600,
               ),
             ),
             const SizedBox(height: 8),

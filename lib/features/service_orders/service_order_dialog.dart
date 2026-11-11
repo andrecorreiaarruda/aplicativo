@@ -592,7 +592,7 @@ class _ServiceOrderDialogState extends State<_ServiceOrderDialog> {
       text,
       style: Theme.of(
         context,
-      ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+      ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
     ),
   );
 
@@ -647,7 +647,7 @@ class _Notice extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: color.withValues(alpha: .08),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(6),
         border: Border.all(color: color.withValues(alpha: .30)),
       ),
       child: Column(

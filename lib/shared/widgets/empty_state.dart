@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/orion_theme.dart';
 
+/// Lista vazia: o que falta e, quando houver, o que fazer.
 class EmptyState extends StatelessWidget {
   const EmptyState({
     super.key,
@@ -18,43 +19,29 @@ class EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 440),
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 70,
-                height: 70,
-                decoration: BoxDecoration(
-                  color: context.orion.accentSoft,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, color: context.orion.accent, size: 34),
-              ),
-              const SizedBox(height: 18),
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                message,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-              if (action != null) ...[const SizedBox(height: 20), action!],
-            ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: context.orion.textMuted, size: 28),
+          const SizedBox(height: 12),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleMedium,
           ),
-        ),
+          const SizedBox(height: 4),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Text(
+              message,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: context.orion.textMuted, height: 1.4),
+            ),
+          ),
+          if (action != null) ...[const SizedBox(height: 16), action!],
+        ],
       ),
     );
   }

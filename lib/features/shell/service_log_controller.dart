@@ -25,8 +25,22 @@ class ServiceLogController extends ChangeNotifier {
   Timer? _retryTimer;
   int _retryAttempt = 0;
 
-  DashboardSnapshot get dashboard =>
-      DashboardSnapshot.from(equipment: equipment, cases: cases);
+  /// Números do painel. Recalculados só quando as listas mudam: o
+  /// painel é reconstruído a cada aviso do controlador, inclusive os de
+  /// sincronização, e a conta percorre todo o histórico.
+  DashboardSnapshot get dashboard {
+    if (!identical(_dashboardEquipment, equipment) ||
+        !identical(_dashboardCases, cases)) {
+      _dashboardEquipment = equipment;
+      _dashboardCases = cases;
+      _dashboard = DashboardSnapshot.from(equipment: equipment, cases: cases);
+    }
+    return _dashboard!;
+  }
+
+  List<Equipment>? _dashboardEquipment;
+  List<ServiceCase>? _dashboardCases;
+  DashboardSnapshot? _dashboard;
 
   Future<void> load() async {
     await _loadLocalData(showLoading: true);

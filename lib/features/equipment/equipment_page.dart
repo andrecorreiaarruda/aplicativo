@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../../core/theme/orion_theme.dart';
 import '../../data/models/equipment.dart';
 import '../../shared/widgets/empty_state.dart';
+import '../../shared/widgets/record_list.dart';
 import '../../shared/widgets/responsive_dialog.dart';
 import '../../shared/widgets/section_header.dart';
 import '../../shared/widgets/status_chip.dart';
@@ -81,232 +81,200 @@ class _EquipmentPageState extends State<EquipmentPage> {
 
   @override
   Widget build(BuildContext context) {
-    final equipment = widget.controller.equipment.where((item) {
-      final haystack = [
-        item.manufacturer,
-        item.model,
-        item.family,
-        item.modality,
-        item.serialNumber,
-        item.customer,
-        item.site,
-      ].join(' ').toLowerCase();
-      return haystack.contains(_query.toLowerCase());
-    }).toList();
+    final query = _query.trim().toLowerCase();
+    final all = widget.controller.equipment;
+    final equipment = query.isEmpty
+        ? all
+        : all
+              .where((item) {
+                final haystack = [
+                  item.manufacturer,
+                  item.model,
+                  item.family,
+                  item.modality,
+                  item.serialNumber,
+                  item.customer,
+                  item.site,
+                ].join(' ').toLowerCase();
+                return haystack.contains(query);
+              })
+              .toList(growable: false);
+    final stopped = all.where((item) => item.status == 'stopped').length;
 
-    return RefreshIndicator(
+    return RecordList(
       onRefresh: widget.controller.load,
-      child: ListView(
-        padding: const EdgeInsets.all(24),
-        children: [
-          SectionHeader(
-            title: 'Equipamentos',
-            subtitle:
-                'Inventário técnico com configuração, localização e condição operacional.',
-            action: Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                OutlinedButton.icon(
-                  onPressed: _newModel,
-                  icon: const Icon(Icons.category_outlined),
-                  label: const Text('Fabricante / modelo'),
+      header: [
+        SectionHeader(
+          title: 'Equipamentos',
+          subtitle: all.isEmpty
+              ? null
+              : '${all.length} cadastrados'
+                    '${stopped == 0 ? '' : ' · $stopped parado${stopped == 1 ? '' : 's'}'}',
+          action: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton(
+                onPressed: _newModel,
+                child: const Text('Fabricante / modelo'),
+              ),
+              if (widget.onOpenCustomers != null)
+                OutlinedButton(
+                  onPressed: widget.onOpenCustomers,
+                  child: const Text('Clientes'),
                 ),
-                if (widget.onOpenCustomers != null)
-                  OutlinedButton.icon(
-                    onPressed: widget.onOpenCustomers,
-                    icon: const Icon(Icons.apartment_outlined),
-                    label: const Text('Clientes'),
+              FilledButton.icon(
+                onPressed: _newEquipment,
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Novo equipamento'),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        TextField(
+          controller: _search,
+          onChanged: (value) => setState(() => _query = value),
+          decoration: InputDecoration(
+            hintText: 'Buscar por modelo, série, cliente ou local…',
+            prefixIcon: const Icon(Icons.search, size: 20),
+            suffixIcon: _query.isEmpty
+                ? null
+                : IconButton(
+                    tooltip: 'Limpar busca',
+                    onPressed: () {
+                      _search.clear();
+                      setState(() => _query = '');
+                    },
+                    icon: const Icon(Icons.close, size: 18),
                   ),
-                FilledButton.icon(
-                  onPressed: _newEquipment,
-                  icon: const Icon(Icons.add_rounded),
-                  label: const Text('Novo equipamento'),
-                ),
-              ],
-            ),
           ),
-          const SizedBox(height: 20),
-          TextField(
-            controller: _search,
-            onChanged: (value) => setState(() => _query = value),
-            decoration: InputDecoration(
-              hintText: 'Pesquisar por modelo, série, cliente ou local...',
-              prefixIcon: const Icon(Icons.search_rounded),
-              suffixIcon: _query.isEmpty
-                  ? null
-                  : IconButton(
-                      onPressed: () {
-                        _search.clear();
-                        setState(() => _query = '');
-                      },
-                      icon: const Icon(Icons.clear_rounded),
-                    ),
-            ),
-          ),
-          const SizedBox(height: 18),
-          if (equipment.isEmpty)
-            EmptyState(
-              icon: Icons.precision_manufacturing_outlined,
-              title: _query.isEmpty
-                  ? 'Nenhum equipamento cadastrado'
-                  : 'Nenhum resultado',
-              message: _query.isEmpty
-                  ? 'Cadastre o primeiro equipamento para iniciar o histórico técnico.'
-                  : 'Revise os termos da pesquisa.',
-              action: _query.isEmpty
-                  ? FilledButton.icon(
-                      onPressed: _newEquipment,
-                      icon: const Icon(Icons.add_rounded),
-                      label: const Text('Cadastrar equipamento'),
-                    )
-                  : null,
-            )
-          else
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final columns = constraints.maxWidth >= 1160
-                    ? 3
-                    : constraints.maxWidth >= 700
-                    ? 2
-                    : 1;
-                final width =
-                    (constraints.maxWidth - (columns - 1) * 14) / columns;
-                return Wrap(
-                  spacing: 14,
-                  runSpacing: 14,
-                  children: [
-                    for (final item in equipment)
-                      SizedBox(
-                        width: width,
-                        child: _EquipmentCard(
-                          item: item,
-                          onEdit: () => _editEquipment(item),
-                          onArchive: () => _archiveEquipment(item),
-                        ),
-                      ),
-                  ],
-                );
-              },
-            ),
-        ],
+        ),
+        const SizedBox(height: 12),
+      ],
+      itemCount: equipment.length,
+      empty: EmptyState(
+        icon: Icons.precision_manufacturing_outlined,
+        title: query.isEmpty
+            ? 'Nenhum equipamento cadastrado'
+            : 'Nada encontrado para "$_query"',
+        message: query.isEmpty
+            ? 'O histórico de atendimentos fica ligado a cada equipamento.'
+            : 'Tente outro termo.',
+        action: query.isEmpty
+            ? FilledButton(
+                onPressed: _newEquipment,
+                child: const Text('Cadastrar equipamento'),
+              )
+            : null,
       ),
+      itemBuilder: (context, index) {
+        final item = equipment[index];
+        return _EquipmentRow(
+          item: item,
+          onEdit: () => _editEquipment(item),
+          onArchive: () => _archiveEquipment(item),
+        );
+      },
     );
   }
 }
 
-class _EquipmentCard extends StatelessWidget {
-  const _EquipmentCard({
+class _EquipmentRow extends StatelessWidget {
+  const _EquipmentRow({
     required this.item,
     required this.onEdit,
     required this.onArchive,
   });
+
   final Equipment item;
   final VoidCallback onEdit;
   final VoidCallback onArchive;
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    final versions = [
+      if (item.softwareVersion?.trim().isNotEmpty == true)
+        'SW ${item.softwareVersion!.trim()}',
+      if (item.hardwareVersion?.trim().isNotEmpty == true)
+        'HW ${item.hardwareVersion!.trim()}',
+    ].join(' · ');
+    final location = item.locationLabel.isEmpty
+        ? 'Sem local'
+        : item.locationLabel;
+
+    return InkWell(
+      onTap: onEdit,
       child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+        padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final wide = constraints.maxWidth >= 760;
+            final identity = Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: context.orion.accentSoft,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    Icons.precision_manufacturing_rounded,
-                    color: context.orion.accent,
-                  ),
+                Text(
+                  item.displayName,
+                  style: const TextStyle(fontWeight: FontWeight.w500),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        item.displayName,
-                        style: const TextStyle(fontWeight: FontWeight.w800),
-                      ),
-                      Text(
-                        item.modality,
-                        style: TextStyle(color: context.orion.textMuted),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                StatusChip(value: item.status, compact: true),
-                IconButton(
-                  tooltip: 'Editar equipamento',
-                  onPressed: onEdit,
-                  icon: const Icon(Icons.edit_outlined),
-                ),
-                IconButton(
-                  tooltip: 'Arquivar equipamento',
-                  onPressed: onArchive,
-                  icon: const Icon(Icons.inventory_2_outlined),
+                const SizedBox(height: 3),
+                MetaText(
+                  [
+                    item.modality,
+                    item.serialLabel,
+                    if (versions.isNotEmpty) versions,
+                  ].join(' · '),
                 ),
               ],
-            ),
-            const SizedBox(height: 18),
-            _InfoLine(icon: Icons.qr_code_2_rounded, text: item.serialLabel),
-            if (item.locationLabel.isNotEmpty)
-              _InfoLine(
-                icon: Icons.location_on_outlined,
-                text: item.locationLabel,
+            );
+            final actions = [
+              IconButton(
+                tooltip: 'Editar equipamento',
+                onPressed: onEdit,
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.edit_outlined, size: 19),
               ),
-            if (item.softwareVersion?.isNotEmpty == true)
-              _InfoLine(
-                icon: Icons.memory_rounded,
-                text: 'Software ${item.softwareVersion}',
+              IconButton(
+                tooltip: 'Arquivar equipamento',
+                onPressed: onArchive,
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.inventory_2_outlined, size: 19),
               ),
-            if (item.hardwareVersion?.isNotEmpty == true)
-              _InfoLine(
-                icon: Icons.developer_board_outlined,
-                text: 'Hardware ${item.hardwareVersion}',
-              ),
-            if (item.notes?.isNotEmpty == true) ...[
-              const SizedBox(height: 10),
-              Text(
-                item.notes!,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: context.orion.textMuted, height: 1.4),
-              ),
-            ],
-          ],
+            ];
+            if (!wide) {
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        identity,
+                        const SizedBox(height: 3),
+                        MetaText(location),
+                        const SizedBox(height: 6),
+                        StatusChip(value: item.status, compact: true),
+                      ],
+                    ),
+                  ),
+                  ...actions,
+                ],
+              );
+            }
+            return Row(
+              children: [
+                Expanded(flex: 5, child: identity),
+                const SizedBox(width: 16),
+                Expanded(flex: 4, child: MetaText(location, maxLines: 2)),
+                SizedBox(
+                  width: 130,
+                  child: StatusChip(value: item.status, compact: true),
+                ),
+                ...actions,
+              ],
+            );
+          },
         ),
-      ),
-    );
-  }
-}
-
-class _InfoLine extends StatelessWidget {
-  const _InfoLine({required this.icon, required this.text});
-  final IconData icon;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 17, color: context.orion.textMuted),
-          const SizedBox(width: 8),
-          Expanded(child: Text(text, style: const TextStyle(fontSize: 13))),
-        ],
       ),
     );
   }

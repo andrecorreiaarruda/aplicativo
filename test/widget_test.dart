@@ -44,9 +44,9 @@ void main() {
     await pumpWorkspace(tester, surfaceSize: const Size(800, 600));
 
     expect(tester.takeException(), isNull);
-    expect(find.text('Visão operacional'), findsOneWidget);
+    expect(find.text('Buscar no histórico'), findsOneWidget);
     expect(find.text('Equipamentos'), findsWidgets);
-    expect(find.byIcon(Icons.auto_awesome_rounded), findsWidgets);
+    expect(find.byIcon(Icons.manage_search), findsWidgets);
   });
 
   testWidgets('workspace ORION não apresenta overflow em desktop', (
@@ -55,7 +55,7 @@ void main() {
     await pumpWorkspace(tester, surfaceSize: const Size(1280, 800));
 
     expect(tester.takeException(), isNull);
-    expect(find.text('Visão operacional'), findsOneWidget);
+    expect(find.text('Buscar no histórico'), findsOneWidget);
     expect(find.text('ServiceLog AI'), findsOneWidget);
   });
 
@@ -66,7 +66,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    expect(find.text('Dados que saem na ordem de serviço'), findsOneWidget);
+    expect(find.text('Novo local'), findsOneWidget);
     expect(find.text('Novo cliente'), findsOneWidget);
   });
 

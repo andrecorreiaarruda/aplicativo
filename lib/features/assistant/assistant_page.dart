@@ -66,17 +66,16 @@ class _AssistantPageState extends State<AssistantPage> {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
       children: [
         const SectionHeader(
-          title: 'Assistente técnico',
-          subtitle:
-              'Recupere casos semelhantes e soluções já validadas pela sua própria equipe.',
+          title: 'Histórico',
+          subtitle: 'Atendimentos já resolvidos parecidos com a falha atual.',
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 16),
         Card(
           child: Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -88,11 +87,8 @@ class _AssistantPageState extends State<AssistantPage> {
                     maxLines: 6,
                     decoration: const InputDecoration(
                       hintText:
-                          'Ex.: aquisição interrompe após 20 minutos; baixa dose funciona; temperatura elevada no módulo...',
-                      prefixIcon: Padding(
-                        padding: EdgeInsets.only(bottom: 60),
-                        child: Icon(Icons.auto_awesome_rounded),
-                      ),
+                          'Ex.: aquisição interrompe após 20 minutos; baixa '
+                          'dose funciona; temperatura elevada no módulo',
                     ),
                   ),
                 ),
@@ -160,39 +156,23 @@ class _AssistantPageState extends State<AssistantPage> {
                 const SizedBox(height: 16),
                 LayoutBuilder(
                   builder: (context, constraints) {
-                    final warning = Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(
-                          Icons.info_outline_rounded,
-                          color: context.orion.accent,
-                          size: 20,
-                        ),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'As sugestões são evidências históricas, não procedimento oficial do fabricante nem diagnóstico autônomo.',
-                            style: TextStyle(
-                              color: context.orion.textMuted,
-                              height: 1.35,
-                            ),
-                          ),
-                        ),
-                      ],
+                    final warning = Text(
+                      'São casos anteriores da equipe, não procedimento do '
+                      'fabricante.',
+                      style: TextStyle(
+                        color: context.orion.textMuted,
+                        fontSize: 13,
+                      ),
                     );
                     final button = FilledButton.icon(
                       onPressed: _searching ? null : _search,
                       icon: _searching
                           ? const SizedBox.square(
-                              dimension: 18,
+                              dimension: 16,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : const Icon(Icons.search_rounded),
-                      label: Text(
-                        _searching
-                            ? 'Pesquisando...'
-                            : 'Buscar casos semelhantes',
-                      ),
+                          : const Icon(Icons.search, size: 18),
+                      label: Text(_searching ? 'Buscando…' : 'Buscar'),
                     );
                     if (constraints.maxWidth < 700) {
                       return Column(
@@ -215,12 +195,7 @@ class _AssistantPageState extends State<AssistantPage> {
         ),
         const SizedBox(height: 20),
         if (!_searched)
-          const EmptyState(
-            icon: Icons.manage_search_rounded,
-            title: 'Pronto para pesquisar',
-            message:
-                'Descreva o comportamento observado. Quanto mais específico o registro, melhor será a recuperação dos casos.',
-          )
+          const SizedBox.shrink()
         else if (_searching)
           const Padding(
             padding: EdgeInsets.all(48),
@@ -228,17 +203,18 @@ class _AssistantPageState extends State<AssistantPage> {
           )
         else if (_results.isEmpty)
           const EmptyState(
-            icon: Icons.search_off_rounded,
-            title: 'Nenhum caso suficientemente semelhante',
+            icon: Icons.search_off,
+            title: 'Nenhum caso parecido',
             message:
-                'Isso não significa que a falha seja inédita. Tente ampliar a descrição ou remover filtros específicos.',
+                'Tente descrever de outro jeito ou tirar algum filtro. Pode '
+                'ser que ainda não haja registro dessa falha.',
           )
         else ...[
           Text(
-            '${_results.length} casos recuperados',
-            style: Theme.of(
-              context,
-            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+            _results.length == 1
+                ? '1 caso parecido'
+                : '${_results.length} casos parecidos',
+            style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 12),
           ..._results.map(
@@ -263,7 +239,7 @@ class _ResultCard extends StatelessWidget {
     final percentage = (result.score * 100).round();
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -278,11 +254,8 @@ class _ResultCard extends StatelessWidget {
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         Text(
-                          'Caso #${item.caseNumber}',
-                          style: TextStyle(
-                            color: context.orion.accent,
-                            fontWeight: FontWeight.w900,
-                          ),
+                          'Atendimento ${item.caseNumber}',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
                         ),
                         StatusChip(
                           value: item.solutionConfidence,
@@ -295,25 +268,15 @@ class _ResultCard extends StatelessWidget {
                     const SizedBox(height: 8),
                     Text(
                       item.equipmentLabel,
-                      style: const TextStyle(fontWeight: FontWeight.w800),
+                      style: TextStyle(color: context.orion.textMuted),
                     ),
                   ],
                 );
-                final score = Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 9,
-                  ),
-                  decoration: BoxDecoration(
-                    color: context.orion.accentSoft,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    '$percentage% similar',
-                    style: TextStyle(
-                      color: context.orion.emphasis,
-                      fontWeight: FontWeight.w900,
-                    ),
+                final score = Text(
+                  '$percentage% parecido',
+                  style: TextStyle(
+                    color: context.orion.textMuted,
+                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 );
                 if (constraints.maxWidth < 600) {
@@ -335,31 +298,15 @@ class _ResultCard extends StatelessWidget {
             const SizedBox(height: 16),
             if (result.explanation != null) ...[
               Container(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.fromLTRB(12, 2, 0, 2),
                 decoration: BoxDecoration(
-                  color: context.orion.accentSoft,
-                  borderRadius: BorderRadius.circular(10),
+                  border: Border(
+                    left: BorderSide(color: context.orion.border, width: 3),
+                  ),
                 ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      Icons.auto_awesome_rounded,
-                      size: 18,
-                      color: context.orion.emphasis,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        result.explanation!,
-                        style: TextStyle(
-                          color: context.orion.emphasis,
-                          fontStyle: FontStyle.italic,
-                          height: 1.4,
-                        ),
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  result.explanation!,
+                  style: const TextStyle(height: 1.4),
                 ),
               ),
               const SizedBox(height: 12),
@@ -425,16 +372,13 @@ class _Tag extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: context.orion.panel,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(4),
         border: Border.all(color: context.orion.border),
       ),
-      child: Text(
-        label,
-        style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
-      ),
+      child: Text(label, style: const TextStyle(fontSize: 12)),
     );
   }
 }

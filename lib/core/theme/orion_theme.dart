@@ -83,20 +83,23 @@ class OrionPalette extends ThemeExtension<OrionPalette> {
   /// Texto sobre um fundo [emphasis], como as iniciais no avatar.
   final Color onEmphasis;
 
+  // Cinzas neutros, sem o azulado que dava a tudo o mesmo tom de painel
+  // de controle. O azul-marinho da marca fica para o que precisa de
+  // destaque de fato: o botão principal, o item selecionado, os números.
   static const light = OrionPalette(
     emphasis: OrionColors.navy,
     brandDeep: OrionColors.deepNavy,
-    accent: OrionColors.blue,
+    accent: Color(0xFF1E5E9E),
     accentBright: OrionColors.cyan,
-    accentSoft: OrionColors.paleCyan,
+    accentSoft: Color(0xFFEDF2F7),
     surface: Colors.white,
-    panel: OrionColors.canvas,
-    canvas: OrionColors.canvas,
-    text: OrionColors.ink,
-    textMuted: OrionColors.muted,
-    border: OrionColors.border,
-    success: OrionColors.success,
-    warning: OrionColors.warning,
+    panel: Color(0xFFF7F8FA),
+    canvas: Color(0xFFF3F4F6),
+    text: Color(0xFF1D232B),
+    textMuted: Color(0xFF5F6874),
+    border: Color(0xFFE1E4E8),
+    success: Color(0xFF1E7A4C),
+    warning: Color(0xFF9A5B00),
     danger: OrionColors.danger,
     onEmphasis: Colors.white,
   );
@@ -105,21 +108,21 @@ class OrionPalette extends ThemeExtension<OrionPalette> {
   /// o vermelho e o laranja originais foram escolhidos para fundo branco e
   /// ficam abaixo do contraste mínimo de leitura sobre fundo escuro.
   static const dark = OrionPalette(
-    emphasis: Color(0xFFD7E4FF),
-    brandDeep: Color(0xFF030B1F),
-    accent: Color(0xFF4CC3E6),
+    emphasis: Color(0xFFE3E7EC),
+    brandDeep: Color(0xFF101318),
+    accent: Color(0xFF7CB0E6),
     accentBright: Color(0xFF3FD0E8),
-    accentSoft: Color(0xFF12303F),
-    surface: Color(0xFF111B2E),
-    panel: Color(0xFF0C1526),
-    canvas: Color(0xFF080F1E),
-    text: Color(0xFFE4EBF7),
-    textMuted: Color(0xFF9AA9C4),
-    border: Color(0xFF26354F),
-    success: Color(0xFF5CD69B),
-    warning: Color(0xFFF2AE5C),
-    danger: Color(0xFFFF8A7A),
-    onEmphasis: Color(0xFF071A4B),
+    accentSoft: Color(0xFF242B34),
+    surface: Color(0xFF1B1E23),
+    panel: Color(0xFF20242A),
+    canvas: Color(0xFF15171B),
+    text: Color(0xFFE3E7EC),
+    textMuted: Color(0xFF9AA2AD),
+    border: Color(0xFF2E333A),
+    success: Color(0xFF5CC992),
+    warning: Color(0xFFE3A55A),
+    danger: Color(0xFFF08A7E),
+    onEmphasis: Color(0xFF15171B),
   );
 
   @override
@@ -192,6 +195,12 @@ abstract final class OrionTheme {
 
   static ThemeData dark() => _build(OrionPalette.dark, Brightness.dark);
 
+  /// Cantos. Pequenos de propósito: cartões muito arredondados, com
+  /// sombra e ícone colorido em cada canto, eram o que mais fazia o
+  /// aplicativo parecer genérico.
+  static const radius = 6.0;
+  static const radiusLarge = 8.0;
+
   /// Um único construtor para os dois modos. Manter dois temas escritos à
   /// mão faria cada ajuste futuro de espaçamento ou raio ser feito duas
   /// vezes — e cedo ou tarde um dos dois ficaria para trás.
@@ -204,46 +213,96 @@ abstract final class OrionTheme {
         ).copyWith(
           primary: isDark ? p.accent : p.emphasis,
           onPrimary: isDark ? p.canvas : Colors.white,
-          secondary: p.accentBright,
+          secondary: p.accent,
           surface: p.surface,
           onSurface: p.text,
           onSurfaceVariant: p.textMuted,
+          surfaceContainerHighest: p.panel,
+          surfaceContainerHigh: p.panel,
+          surfaceContainer: p.panel,
+          surfaceContainerLow: p.surface,
+          surfaceContainerLowest: p.surface,
+          secondaryContainer: p.accentSoft,
+          onSecondaryContainer: p.text,
           outline: p.border,
           outlineVariant: p.border,
           error: p.danger,
         );
 
-    // Botão principal: azul-marinho sólido no claro. No escuro, um marinho
-    // sobre o fundo quase preto não se destacaria; o azul de ação sim.
     final filledBackground = isDark ? p.accent : p.emphasis;
     final filledForeground = isDark ? p.canvas : Colors.white;
+    final small = BorderRadius.circular(radius);
+    final border = BorderSide(color: p.border);
 
-    return ThemeData(
+    final base = ThemeData(
       useMaterial3: true,
       brightness: brightness,
       colorScheme: scheme,
+    );
+    // Pesos moderados. O padrão anterior punha w800 em quase todo título,
+    // e texto em negrito por toda parte deixa de destacar alguma coisa.
+    final text = base.textTheme
+        .copyWith(
+          headlineSmall: base.textTheme.headlineSmall?.copyWith(
+            fontSize: 21,
+            fontWeight: FontWeight.w600,
+            letterSpacing: -0.2,
+          ),
+          titleLarge: base.textTheme.titleLarge?.copyWith(
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+          ),
+          titleMedium: base.textTheme.titleMedium?.copyWith(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+          ),
+          titleSmall: base.textTheme.titleSmall?.copyWith(
+            fontSize: 13.5,
+            fontWeight: FontWeight.w600,
+          ),
+          bodyMedium: base.textTheme.bodyMedium?.copyWith(fontSize: 14),
+          bodySmall: base.textTheme.bodySmall?.copyWith(fontSize: 12.5),
+          labelLarge: base.textTheme.labelLarge?.copyWith(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+          ),
+        )
+        .apply(bodyColor: p.text, displayColor: p.text);
+
+    return base.copyWith(
+      textTheme: text,
       extensions: [p],
       scaffoldBackgroundColor: p.canvas,
+      visualDensity: VisualDensity.standard,
+      splashFactory: InkSparkle.constantTurbulenceSeedSplashFactory,
       appBarTheme: AppBarTheme(
         backgroundColor: p.surface,
-        foregroundColor: p.emphasis,
+        foregroundColor: p.text,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
+        scrolledUnderElevation: 0,
+        titleTextStyle: text.titleLarge,
+        shape: Border(bottom: border),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: p.surface,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: p.border),
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 12,
         ),
+        hintStyle: text.bodyMedium?.copyWith(
+          color: p.textMuted.withValues(alpha: .8),
+        ),
+        border: OutlineInputBorder(borderRadius: small, borderSide: border),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: p.border),
+          borderRadius: small,
+          borderSide: border,
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: p.accent, width: 1.6),
+          borderRadius: small,
+          borderSide: BorderSide(color: p.accent, width: 1.4),
         ),
         alignLabelWithHint: true,
       ),
@@ -253,64 +312,132 @@ abstract final class OrionTheme {
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: p.border),
+          borderRadius: BorderRadius.circular(radiusLarge),
+          side: border,
         ),
       ),
       dialogTheme: DialogThemeData(
         backgroundColor: p.surface,
         surfaceTintColor: Colors.transparent,
-      ),
-      navigationRailTheme: NavigationRailThemeData(
-        backgroundColor: p.brandDeep,
-        indicatorColor: OrionColors.cyan,
-        selectedIconTheme: const IconThemeData(color: OrionColors.deepNavy),
-        unselectedIconTheme: const IconThemeData(color: Color(0xFFB9C8E8)),
-        selectedLabelTextStyle: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.w700,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(radiusLarge),
         ),
-        unselectedLabelTextStyle: const TextStyle(color: Color(0xFFB9C8E8)),
+        titleTextStyle: text.titleLarge,
+      ),
+      popupMenuTheme: PopupMenuThemeData(
+        color: p.surface,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: small, side: border),
+        elevation: 3,
+      ),
+      // A barra lateral acompanha a superfície, com uma borda à direita.
+      // O bloco azul-marinho com pílula ciano chamava mais atenção que o
+      // conteúdo.
+      navigationRailTheme: NavigationRailThemeData(
+        backgroundColor: p.surface,
+        indicatorColor: p.accentSoft,
+        indicatorShape: RoundedRectangleBorder(borderRadius: small),
+        selectedIconTheme: IconThemeData(color: p.emphasis, size: 22),
+        unselectedIconTheme: IconThemeData(color: p.textMuted, size: 22),
+        // Derivados da tipografia do tema, e não estilos soltos: um
+        // TextStyle sem família substitui o do tema por inteiro, e o texto
+        // cai na fonte padrão do sistema, diferente do resto da tela.
+        selectedLabelTextStyle: text.labelLarge?.copyWith(
+          color: p.text,
+          fontWeight: FontWeight.w600,
+        ),
+        unselectedLabelTextStyle: text.labelLarge?.copyWith(
+          color: p.textMuted,
+          fontWeight: FontWeight.w400,
+        ),
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: p.surface,
         indicatorColor: p.accentSoft,
         surfaceTintColor: Colors.transparent,
+        height: 64,
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           backgroundColor: filledBackground,
           foregroundColor: filledForeground,
-          minimumSize: const Size(0, 46),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
+          minimumSize: const Size(0, 40),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          shape: RoundedRectangleBorder(borderRadius: small),
+          textStyle: text.labelLarge,
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: p.emphasis,
-          minimumSize: const Size(0, 46),
-          side: BorderSide(color: p.border),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
+          foregroundColor: p.text,
+          minimumSize: const Size(0, 40),
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          side: border,
+          shape: RoundedRectangleBorder(borderRadius: small),
+          textStyle: text.labelLarge,
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: isDark ? p.accent : p.emphasis,
+          foregroundColor: p.accent,
+          shape: RoundedRectangleBorder(borderRadius: small),
+          textStyle: text.labelLarge,
         ),
+      ),
+      iconButtonTheme: IconButtonThemeData(
+        style: IconButton.styleFrom(
+          foregroundColor: p.textMuted,
+          shape: RoundedRectangleBorder(borderRadius: small),
+        ),
+      ),
+      segmentedButtonTheme: SegmentedButtonThemeData(
+        style: SegmentedButton.styleFrom(
+          backgroundColor: p.surface,
+          selectedBackgroundColor: p.accentSoft,
+          selectedForegroundColor: p.text,
+          foregroundColor: p.textMuted,
+          side: border,
+          shape: RoundedRectangleBorder(borderRadius: small),
+          visualDensity: VisualDensity.compact,
+        ),
+        // Sem o tique: o fundo já diz qual está escolhido.
+        selectedIcon: const SizedBox.shrink(),
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: p.surface,
+        selectedColor: p.accentSoft,
+        side: border,
+        shape: RoundedRectangleBorder(borderRadius: small),
+        labelStyle: text.bodyMedium?.copyWith(color: p.text, fontSize: 13),
+        showCheckmark: false,
       ),
       floatingActionButtonTheme: FloatingActionButtonThemeData(
         backgroundColor: filledBackground,
         foregroundColor: filledForeground,
       ),
       snackBarTheme: SnackBarThemeData(
-        backgroundColor: isDark ? p.emphasis : p.brandDeep,
-        contentTextStyle: TextStyle(color: isDark ? p.canvas : Colors.white),
+        backgroundColor: isDark ? p.emphasis : p.text,
+        contentTextStyle: text.bodyMedium?.copyWith(
+          color: isDark ? p.canvas : Colors.white,
+        ),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: small),
       ),
-      dividerTheme: DividerThemeData(color: p.border),
+      dividerTheme: DividerThemeData(color: p.border, space: 1, thickness: 1),
+      listTileTheme: ListTileThemeData(
+        shape: RoundedRectangleBorder(borderRadius: small),
+      ),
+      tooltipTheme: TooltipThemeData(
+        waitDuration: const Duration(milliseconds: 400),
+        decoration: BoxDecoration(
+          color: isDark ? p.emphasis : p.text,
+          borderRadius: BorderRadius.circular(4),
+        ),
+        textStyle: text.bodySmall?.copyWith(
+          color: isDark ? p.canvas : Colors.white,
+          fontSize: 12,
+        ),
+      ),
     );
   }
 }

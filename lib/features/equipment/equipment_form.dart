@@ -346,7 +346,7 @@ class _EquipmentFormState extends State<EquipmentForm> {
                         alignment: Alignment.topLeft,
                         child: Material(
                           elevation: 10,
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(8),
                           clipBehavior: Clip.antiAlias,
                           child: ConstrainedBox(
                             constraints: BoxConstraints(
@@ -370,7 +370,7 @@ class _EquipmentFormState extends State<EquipmentForm> {
                                     title: Text(
                                       'Cadastrar “${choice.query}”',
                                       style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
+                                        fontWeight: FontWeight.w600,
                                       ),
                                     ),
                                     subtitle: const Text(
@@ -395,7 +395,7 @@ class _EquipmentFormState extends State<EquipmentForm> {
                                   title: Text(
                                     '${model.manufacturer} ${model.model}',
                                     style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
+                                      fontWeight: FontWeight.w600,
                                     ),
                                   ),
                                   subtitle: details.isEmpty
@@ -489,7 +489,7 @@ class _EquipmentFormState extends State<EquipmentForm> {
                         alignment: Alignment.topLeft,
                         child: Material(
                           elevation: 10,
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(8),
                           clipBehavior: Clip.antiAlias,
                           child: ConstrainedBox(
                             constraints: BoxConstraints(
@@ -513,7 +513,7 @@ class _EquipmentFormState extends State<EquipmentForm> {
                                     title: Text(
                                       'Cadastrar cliente/local “${choice.query}”',
                                       style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
+                                        fontWeight: FontWeight.w600,
                                       ),
                                     ),
                                     subtitle: const Text(
@@ -531,7 +531,7 @@ class _EquipmentFormState extends State<EquipmentForm> {
                                   title: Text(
                                     site.label,
                                     style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
+                                      fontWeight: FontWeight.w600,
                                     ),
                                   ),
                                   subtitle: site.locationLabel.isEmpty
@@ -1526,7 +1526,7 @@ class _DialogHeader extends StatelessWidget {
               title,
               style: Theme.of(
                 context,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
             ),
           ),
           IconButton(onPressed: onClose, icon: const Icon(Icons.close_rounded)),

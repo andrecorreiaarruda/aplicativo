@@ -2,6 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/orion_theme.dart';
 
+/// Situação de um registro: um ponto colorido e o nome.
+///
+/// Era uma pílula com fundo e borda coloridos. Várias delas lado a lado,
+/// em cada cartão, disputavam atenção com o conteúdo; o ponto basta para
+/// distinguir as situações e deixa o texto em cor de leitura normal.
 class StatusChip extends StatelessWidget {
   const StatusChip({super.key, required this.value, this.compact = false});
 
@@ -15,28 +20,36 @@ class StatusChip extends StatelessWidget {
       context.orion,
       Theme.of(context).brightness == Brightness.dark,
     );
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: compact ? 8 : 10,
-        vertical: compact ? 4 : 6,
-      ),
-      decoration: BoxDecoration(
-        color: metadata.color.withValues(alpha: .10),
-        borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: metadata.color.withValues(alpha: .30)),
-      ),
-      child: Text(
-        metadata.label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          color: metadata.color,
-          fontWeight: FontWeight.w700,
-          fontSize: compact ? 11 : 12,
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 7,
+          height: 7,
+          decoration: BoxDecoration(
+            color: metadata.color,
+            shape: BoxShape.circle,
+          ),
         ),
-      ),
+        const SizedBox(width: 6),
+        Flexible(
+          child: Text(
+            metadata.label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: context.orion.text,
+              fontSize: compact ? 12.5 : 13,
+            ),
+          ),
+        ),
+      ],
     );
   }
+
+  /// Só o nome, para textos e buscas.
+  static String labelOf(String value) =>
+      _metadata(value, OrionPalette.light, false).label;
 
   static _StatusMetadata _metadata(String value, OrionPalette p, bool escuro) {
     switch (value) {

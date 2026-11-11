@@ -253,7 +253,7 @@ class _CaseFormState extends State<CaseForm> {
                           ? 'Novo atendimento técnico'
                           : 'Atendimento #${widget.initialCase!.caseNumber}',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                     Text(
@@ -687,7 +687,7 @@ class _ExecutionStep extends StatelessWidget {
           'Diário de andamento',
           style: Theme.of(
             context,
-          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 6),
         Text(
@@ -730,7 +730,7 @@ class _ExecutionStep extends StatelessWidget {
                         : '${dateFormat.format(entry.occurredAt)} → '
                               '${dateFormat.format(entry.endedAt!)} · '
                               '${_ExecutionStep.formatDuration(entry.duration!)}',
-                    style: const TextStyle(fontWeight: FontWeight.w800),
+                    style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                   subtitle: Padding(
                     padding: const EdgeInsets.only(top: 6),
@@ -778,7 +778,7 @@ class _OpenSessionBanner extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: context.orion.accentSoft,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -791,7 +791,7 @@ class _OpenSessionBanner extends StatelessWidget {
               children: [
                 const Text(
                   'Sessão sem horário de fim',
-                  style: TextStyle(fontWeight: FontWeight.w800),
+                  style: TextStyle(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -1117,7 +1117,7 @@ class _ComputedTimeSummary extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: context.orion.accentSoft,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1129,7 +1129,7 @@ class _ComputedTimeSummary extends StatelessWidget {
               Expanded(
                 child: Text(
                   'Tempo técnico: ${_format(serviceMinutes)}',
-                  style: const TextStyle(fontWeight: FontWeight.w800),
+                  style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
               ),
             ],

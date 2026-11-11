@@ -96,37 +96,37 @@ class _ArchivedPageState extends State<ArchivedPage> {
         }
 
         final dados = snapshot.data ?? ArchivedRecords.empty;
-        if (dados.isEmpty) {
-          return const EmptyState(
-            icon: Icons.inventory_2_outlined,
-            title: 'Nenhum registro arquivado',
-            message:
-                'Ao arquivar um cliente, equipamento ou atendimento, ele '
-                'aparece aqui e pode ser restaurado a qualquer momento.',
-          );
-        }
-
         return SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               SectionHeader(
                 title: 'Arquivados',
-                subtitle:
-                    '${dados.total} registro(s). Arquivar não apaga: o '
-                    'histórico técnico permanece no banco.',
+                subtitle: dados.isEmpty
+                    ? null
+                    : dados.total == 1
+                    ? '1 registro'
+                    : '${dados.total} registros',
                 action: IconButton(
                   tooltip: 'Atualizar',
                   onPressed: _recarregar,
-                  icon: const Icon(Icons.refresh_rounded),
+                  icon: const Icon(Icons.refresh),
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 16),
+              if (dados.isEmpty)
+                const EmptyState(
+                  icon: Icons.inventory_2_outlined,
+                  title: 'Nada arquivado',
+                  message:
+                      'Cliente, equipamento ou atendimento arquivado aparece '
+                      'aqui e pode ser restaurado. Arquivar não apaga o '
+                      'histórico.',
+                ),
               if (dados.customers.isNotEmpty)
                 _Grupo(
                   titulo: 'Clientes',
-                  icone: Icons.apartment_rounded,
                   itens: [
                     for (final item in dados.customers)
                       _LinhaArquivada(
@@ -147,7 +147,6 @@ class _ArchivedPageState extends State<ArchivedPage> {
               if (dados.equipment.isNotEmpty)
                 _Grupo(
                   titulo: 'Equipamentos',
-                  icone: Icons.precision_manufacturing_rounded,
                   itens: [
                     for (final item in dados.equipment)
                       _LinhaArquivada(
@@ -168,7 +167,6 @@ class _ArchivedPageState extends State<ArchivedPage> {
               if (dados.cases.isNotEmpty)
                 _Grupo(
                   titulo: 'Atendimentos',
-                  icone: Icons.assignment_rounded,
                   itens: [
                     for (final item in dados.cases)
                       _LinhaArquivada(
@@ -196,41 +194,40 @@ class _ArchivedPageState extends State<ArchivedPage> {
 }
 
 class _Grupo extends StatelessWidget {
-  const _Grupo({
-    required this.titulo,
-    required this.icone,
-    required this.itens,
-  });
+  const _Grupo({required this.titulo, required this.itens});
 
   final String titulo;
-  final IconData icone;
   final List<Widget> itens;
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.orion;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 20),
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(icone, size: 20, color: context.orion.accent),
-                  const SizedBox(width: 8),
-                  Text(
-                    '$titulo (${itens.length})',
-                    style: const TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              ...itens,
-            ],
+      padding: const EdgeInsets.only(bottom: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            '$titulo · ${itens.length}',
+            style: Theme.of(context).textTheme.titleSmall,
           ),
-        ),
+          const SizedBox(height: 8),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: palette.surface,
+              border: Border.all(color: palette.border),
+              borderRadius: BorderRadius.circular(OrionTheme.radiusLarge),
+            ),
+            child: Column(
+              children: [
+                for (final (index, item) in itens.indexed) ...[
+                  if (index > 0) const Divider(height: 1),
+                  item,
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -255,7 +252,7 @@ class _LinhaArquivada extends StatelessWidget {
   Widget build(BuildContext context) {
     final quando = arquivadoEm;
     return ListTile(
-      contentPadding: EdgeInsets.zero,
+      contentPadding: const EdgeInsets.fromLTRB(16, 2, 8, 2),
       title: Text(titulo, maxLines: 2, overflow: TextOverflow.ellipsis),
       subtitle: Text(
         [
@@ -269,17 +266,14 @@ class _LinhaArquivada extends StatelessWidget {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          FilledButton.tonalIcon(
-            onPressed: onRestaurar,
-            icon: const Icon(Icons.restore_rounded, size: 18),
-            label: const Text('Restaurar'),
-          ),
+          TextButton(onPressed: onRestaurar, child: const Text('Restaurar')),
           const SizedBox(width: 4),
           IconButton(
             tooltip: 'Excluir para sempre',
             onPressed: onExcluir,
             icon: Icon(
-              Icons.delete_forever_rounded,
+              Icons.delete_outline,
+              size: 20,
               color: context.orion.danger,
             ),
           ),

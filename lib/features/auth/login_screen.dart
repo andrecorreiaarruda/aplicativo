@@ -93,139 +93,34 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Um formulário só, no meio da tela. O painel lateral com slogan e
+    // etiquetas de recursos era propaganda para quem já é usuário.
     return Scaffold(
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final wide = constraints.maxWidth >= 900;
-          final form = _LoginForm(
-            formKey: _formKey,
-            email: _email,
-            password: _password,
-            createAccount: _createAccount,
-            obscure: _obscure,
-            loading: _loading,
-            message: _message,
-            onModeChanged: (value) => setState(() {
-              _createAccount = value;
-              _message = null;
-            }),
-            onToggleObscure: () => setState(() => _obscure = !_obscure),
-            onSubmit: _submit,
-            onForgotPassword: _openRecovery,
-          );
-          if (!wide) {
-            return SafeArea(
-              child: Center(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(24),
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 460),
-                    child: form,
-                  ),
-                ),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 380),
+              child: _LoginForm(
+                formKey: _formKey,
+                email: _email,
+                password: _password,
+                createAccount: _createAccount,
+                obscure: _obscure,
+                loading: _loading,
+                message: _message,
+                onModeChanged: (value) => setState(() {
+                  _createAccount = value;
+                  _message = null;
+                }),
+                onToggleObscure: () => setState(() => _obscure = !_obscure),
+                onSubmit: _submit,
+                onForgotPassword: _openRecovery,
               ),
-            );
-          }
-          return Row(
-            children: [
-              Expanded(
-                flex: 5,
-                child: Container(
-                  color: context.orion.brandDeep,
-                  padding: const EdgeInsets.all(56),
-                  child: const _BrandPanel(),
-                ),
-              ),
-              Expanded(
-                flex: 4,
-                child: Center(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(48),
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 450),
-                      child: form,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _BrandPanel extends StatelessWidget {
-  const _BrandPanel();
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const OrionBrand(onDark: true, height: 48),
-        const Spacer(),
-        Text(
-          'Conhecimento técnico que permanece com a equipe.',
-          style: Theme.of(context).textTheme.displaySmall?.copyWith(
-            color: Colors.white,
-            fontWeight: FontWeight.w800,
-            height: 1.12,
+            ),
           ),
         ),
-        const SizedBox(height: 20),
-        const Text(
-          'Registre falhas, organize diagnósticos e recupere soluções anteriores com rastreabilidade.',
-          style: TextStyle(color: Color(0xFFD7E2F7), fontSize: 18, height: 1.5),
-        ),
-        const SizedBox(height: 34),
-        const Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
-            _FeatureTag(
-              icon: Icons.history_rounded,
-              label: 'Histórico técnico',
-            ),
-            _FeatureTag(icon: Icons.security_rounded, label: 'Dados isolados'),
-            _FeatureTag(
-              icon: Icons.auto_awesome_rounded,
-              label: 'Busca assistida',
-            ),
-          ],
-        ),
-        const Spacer(),
-        const Text(
-          'A IA apresenta evidências históricas. A decisão técnica permanece com o profissional responsável.',
-          style: TextStyle(color: Color(0xFF9FB1D4), height: 1.4),
-        ),
-      ],
-    );
-  }
-}
-
-class _FeatureTag extends StatelessWidget {
-  const _FeatureTag({required this.icon, required this.label});
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: .08),
-        border: Border.all(color: Colors.white.withValues(alpha: .14)),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: context.orion.accentBright, size: 18),
-          const SizedBox(width: 8),
-          Text(label, style: const TextStyle(color: Colors.white)),
-        ],
       ),
     );
   }
@@ -260,49 +155,36 @@ class _LoginForm extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.orion;
     return Form(
       key: formKey,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Align(alignment: Alignment.centerLeft, child: OrionBrand()),
-          const SizedBox(height: 38),
-          Text(
-            createAccount ? 'Criar acesso' : 'Acessar o sistema',
-            style: Theme.of(
-              context,
-            ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: OrionBrand(height: 34),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 32),
           Text(
-            createAccount
-                ? 'Após o cadastro, configure o ambiente da sua empresa.'
-                : 'Entre com sua conta profissional.',
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            createAccount ? 'Criar conta' : 'Entrar',
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          if (createAccount) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Depois do cadastro você cria a sua organização.',
+              style: TextStyle(color: palette.textMuted),
             ),
-          ),
+          ],
           const SizedBox(height: 24),
-          SegmentedButton<bool>(
-            segments: const [
-              ButtonSegment(value: false, label: Text('Entrar')),
-              ButtonSegment(value: true, label: Text('Criar conta')),
-            ],
-            selected: {createAccount},
-            onSelectionChanged: loading
-                ? null
-                : (values) => onModeChanged(values.first),
-          ),
-          const SizedBox(height: 22),
           LabeledField(
             label: 'E-mail',
             child: TextFormField(
               controller: email,
               keyboardType: TextInputType.emailAddress,
               autofillHints: const [AutofillHints.email],
-              decoration: const InputDecoration(
-                prefixIcon: Icon(Icons.mail_outline_rounded),
-              ),
+              textInputAction: TextInputAction.next,
               validator: (value) {
                 final text = value?.trim() ?? '';
                 if (!text.contains('@') || !text.contains('.')) {
@@ -318,16 +200,21 @@ class _LoginForm extends StatelessWidget {
             child: TextFormField(
               controller: password,
               obscureText: obscure,
-              autofillHints: const [AutofillHints.password],
+              autofillHints: [
+                createAccount
+                    ? AutofillHints.newPassword
+                    : AutofillHints.password,
+              ],
               onFieldSubmitted: (_) => onSubmit(),
               decoration: InputDecoration(
-                prefixIcon: const Icon(Icons.lock_outline_rounded),
                 suffixIcon: IconButton(
+                  tooltip: obscure ? 'Mostrar senha' : 'Ocultar senha',
                   onPressed: onToggleObscure,
                   icon: Icon(
                     obscure
-                        ? Icons.visibility_rounded
-                        : Icons.visibility_off_rounded,
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
+                    size: 20,
                   ),
                 ),
               ),
@@ -339,39 +226,52 @@ class _LoginForm extends StatelessWidget {
               },
             ),
           ),
-          if (message != null) ...[
+          if (!createAccount)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: loading ? null : onForgotPassword,
+                child: const Text('Esqueci minha senha'),
+              ),
+            )
+          else
             const SizedBox(height: 14),
+          if (message != null) ...[
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: context.orion.accentSoft,
-                borderRadius: BorderRadius.circular(10),
+                color: palette.panel,
+                border: Border.all(color: palette.border),
+                borderRadius: BorderRadius.circular(OrionTheme.radius),
               ),
               child: Text(message!),
             ),
+            const SizedBox(height: 14),
           ],
-          const SizedBox(height: 22),
-          FilledButton.icon(
+          FilledButton(
             onPressed: loading ? null : onSubmit,
-            icon: loading
+            style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
+            child: loading
                 ? const SizedBox.square(
                     dimension: 18,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : Icon(
-                    createAccount
-                        ? Icons.person_add_alt_1_rounded
-                        : Icons.login_rounded,
-                  ),
-            label: Text(createAccount ? 'Criar conta' : 'Entrar'),
+                : Text(createAccount ? 'Criar conta' : 'Entrar'),
           ),
-          if (!createAccount) ...[
-            const SizedBox(height: 10),
-            TextButton(
-              onPressed: loading ? null : onForgotPassword,
-              child: const Text('Esqueci minha senha'),
-            ),
-          ],
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                createAccount ? 'Já tem conta?' : 'Ainda não tem conta?',
+                style: TextStyle(color: palette.textMuted),
+              ),
+              TextButton(
+                onPressed: loading ? null : () => onModeChanged(!createAccount),
+                child: Text(createAccount ? 'Entrar' : 'Criar conta'),
+              ),
+            ],
+          ),
         ],
       ),
     );

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../../core/theme/orion_theme.dart';
 import '../../data/repositories/service_log_repository.dart';
@@ -58,34 +59,37 @@ class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace>
 
   static const _destinations = [
     _Destination(
-      label: 'Dashboard',
+      label: 'Visão geral',
       icon: Icons.space_dashboard_outlined,
-      selectedIcon: Icons.space_dashboard_rounded,
+      selectedIcon: Icons.space_dashboard,
     ),
     _Destination(
       label: 'Clientes',
       icon: Icons.apartment_outlined,
-      selectedIcon: Icons.apartment_rounded,
+      selectedIcon: Icons.apartment,
     ),
     _Destination(
       label: 'Equipamentos',
       icon: Icons.precision_manufacturing_outlined,
-      selectedIcon: Icons.precision_manufacturing_rounded,
+      selectedIcon: Icons.precision_manufacturing,
     ),
     _Destination(
       label: 'Atendimentos',
       icon: Icons.assignment_outlined,
-      selectedIcon: Icons.assignment_rounded,
+      selectedIcon: Icons.assignment,
     ),
+    // "Histórico", e não "Assistente": é uma busca nos atendimentos já
+    // resolvidos. O nome antigo e o ícone de brilho prometiam mais do que
+    // a tela faz.
     _Destination(
-      label: 'Assistente',
-      icon: Icons.auto_awesome_outlined,
-      selectedIcon: Icons.auto_awesome_rounded,
+      label: 'Histórico',
+      icon: Icons.manage_search_outlined,
+      selectedIcon: Icons.manage_search,
     ),
     _Destination(
       label: 'Arquivados',
       icon: Icons.inventory_2_outlined,
-      selectedIcon: Icons.inventory_2_rounded,
+      selectedIcon: Icons.inventory_2,
     ),
   ];
 
@@ -164,7 +168,7 @@ class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace>
     }
     final pending = status?.pendingCount ?? 0;
     if (pending > 0) return '$pending pendente${pending == 1 ? '' : 's'}';
-    return widget.demoMode ? widget.storageLabel : 'Sincronizado';
+    return widget.demoMode ? 'Demonstração · só local' : 'Sincronizado';
   }
 
   bool get _hasConflicts => (_controller.syncStatus?.conflictCount ?? 0) > 0;
@@ -178,13 +182,7 @@ class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace>
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.storage_rounded),
-            SizedBox(width: 10),
-            Text('Armazenamento e sincronização'),
-          ],
-        ),
+        title: const Text('Armazenamento e sincronização'),
         content: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 520),
           child: Column(
@@ -193,7 +191,7 @@ class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace>
             children: [
               Text(
                 widget.storageLabel,
-                style: const TextStyle(fontWeight: FontWeight.w800),
+                style: const TextStyle(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
               Text(
@@ -216,7 +214,7 @@ class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace>
                 const SizedBox(height: 10),
                 Text(
                   'Última sincronização: '
-                  '${_controller.syncStatus!.lastSuccessfulSync!.toLocal()}',
+                  '${DateFormat('dd/MM/yyyy HH:mm').format(_controller.syncStatus!.lastSuccessfulSync!.toLocal())}',
                 ),
               ],
               if (_controller.syncStatus?.lastError != null) ...[
@@ -276,12 +274,13 @@ class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace>
             final rail = constraints.maxWidth >= 860;
             final extended = constraints.maxWidth >= 1220;
             final narrowPhone = constraints.maxWidth < 470;
-            final showDemoChip = constraints.maxWidth >= 680;
             final showStorageChip = constraints.maxWidth >= 760;
 
+            final palette = context.orion;
+            final busy = _controller.loading || _controller.syncing;
             return Scaffold(
               appBar: AppBar(
-                toolbarHeight: 68,
+                toolbarHeight: 56,
                 leadingWidth: rail
                     ? (extended ? 246 : 86)
                     : narrowPhone
@@ -294,54 +293,33 @@ class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace>
                     child: OrionBrand(
                       compact: (rail && !extended) || narrowPhone,
                       showProductDetails: rail && extended,
-                      height: 36,
+                      height: 30,
                     ),
                   ),
                 ),
-                title: rail
-                    ? Text(
-                        _destinations[_selectedIndex].label,
-                        style: const TextStyle(fontWeight: FontWeight.w800),
-                      )
-                    : null,
                 actions: [
-                  if (widget.demoMode && showDemoChip)
-                    Container(
-                      margin: const EdgeInsets.symmetric(
-                        vertical: 17,
-                        horizontal: 8,
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: context.orion.accentSoft,
-                        borderRadius: BorderRadius.circular(99),
-                      ),
-                      child: Text(
-                        'DEMO LOCAL',
-                        style: TextStyle(
-                          color: context.orion.emphasis,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ),
                   if (showStorageChip)
-                    ActionChip(
-                      avatar: Icon(
-                        _hasConflicts
-                            ? Icons.sync_problem_rounded
-                            : Icons.storage_rounded,
-                        size: 18,
-                        color: _hasConflicts ? context.orion.warning : null,
+                    TextButton.icon(
+                      style: TextButton.styleFrom(
+                        foregroundColor: _hasConflicts
+                            ? palette.warning
+                            : palette.textMuted,
                       ),
-                      label: Text(_storageStatusLabel()),
                       // Com conflito, o atalho leva direto a onde se
                       // resolve: o diálogo de armazenamento não tem o que
                       // oferecer enquanto a fila está travada.
                       onPressed: _hasConflicts
                           ? _openConflicts
                           : _showStorageDetails,
+                      icon: Icon(
+                        _hasConflicts
+                            ? Icons.sync_problem_outlined
+                            : widget.demoMode
+                            ? Icons.storage_outlined
+                            : Icons.cloud_done_outlined,
+                        size: 18,
+                      ),
+                      label: Text(_storageStatusLabel()),
                     )
                   else
                     IconButton(
@@ -353,28 +331,26 @@ class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace>
                           : _showStorageDetails,
                       icon: Icon(
                         _hasConflicts
-                            ? Icons.sync_problem_rounded
-                            : Icons.storage_rounded,
-                        color: _hasConflicts ? context.orion.warning : null,
+                            ? Icons.sync_problem_outlined
+                            : Icons.storage_outlined,
+                        color: _hasConflicts ? palette.warning : null,
                       ),
                     ),
                   IconButton(
                     tooltip: widget.demoMode
                         ? 'Atualizar dados locais'
                         : 'Sincronizar dados',
-                    onPressed: _controller.loading || _controller.syncing
+                    onPressed: busy
                         ? null
                         : widget.demoMode
                         ? _controller.load
                         : () => _controller.syncNow(),
-                    icon: Icon(
-                      widget.demoMode
-                          ? Icons.refresh_rounded
-                          : Icons.sync_rounded,
-                    ),
+                    icon: const Icon(Icons.sync),
                   ),
+                  const SizedBox(width: 4),
                   PopupMenuButton<String>(
                     tooltip: 'Conta',
+                    position: PopupMenuPosition.under,
                     onSelected: (value) {
                       if (value == 'appearance') showAppearanceDialog(context);
                       if (value == 'issuer') showIssuerDialog(context);
@@ -384,82 +360,95 @@ class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace>
                       PopupMenuItem(
                         enabled: false,
                         child: ConstrainedBox(
-                          constraints: const BoxConstraints(minWidth: 210),
+                          constraints: const BoxConstraints(minWidth: 220),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
                                 widget.profile.fullName,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w800,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: palette.text,
                                 ),
                               ),
                               Text(
                                 '${widget.profile.role} · '
                                 '${widget.profile.organizationName}',
+                                style: TextStyle(
+                                  color: palette.textMuted,
+                                  fontSize: 13,
+                                ),
                               ),
                             ],
                           ),
                         ),
                       ),
+                      const PopupMenuDivider(),
                       PopupMenuItem(
                         value: 'appearance',
-                        child: ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: const Icon(Icons.contrast_rounded),
-                          title: const Text('Aparência'),
-                          subtitle: Text(
-                            appearanceLabel(
-                              AppearanceScope.maybeOf(context)?.mode ??
-                                  ThemeMode.system,
+                        child: Row(
+                          children: [
+                            const Expanded(child: Text('Aparência')),
+                            Text(
+                              appearanceLabel(
+                                AppearanceScope.maybeOf(context)?.mode ??
+                                    ThemeMode.system,
+                              ),
+                              style: TextStyle(color: palette.textMuted),
                             ),
-                          ),
+                          ],
                         ),
                       ),
                       if (ServiceOrderScope.maybeOf(context) != null)
                         const PopupMenuItem(
                           value: 'issuer',
-                          child: ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            leading: Icon(Icons.badge_outlined),
-                            title: Text('Dados do emitente da OS'),
-                          ),
+                          child: Text('Dados do emitente da OS'),
                         ),
-                      if (!widget.demoMode)
+                      if (!widget.demoMode) ...[
+                        const PopupMenuDivider(),
                         const PopupMenuItem(
                           value: 'logout',
-                          child: ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            leading: Icon(Icons.logout_rounded),
-                            title: Text('Sair'),
+                          child: Text('Sair'),
+                        ),
+                      ],
+                    ],
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: CircleAvatar(
+                        radius: 15,
+                        backgroundColor: palette.accentSoft,
+                        foregroundColor: palette.text,
+                        child: Text(
+                          _initials(widget.profile.fullName),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                    ],
-                    icon: CircleAvatar(
-                      radius: 17,
-                      backgroundColor: context.orion.emphasis,
-                      foregroundColor: context.orion.onEmphasis,
-                      child: Text(_initials(widget.profile.fullName)),
+                      ),
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 12),
                 ],
-                bottom: _controller.loading || _controller.syncing
+                // Linha fina durante a sincronização. Ela acontece depois
+                // de toda gravação; uma barra grossa piscando a cada
+                // salvar chamava atenção para algo que não pede nada.
+                bottom: busy
                     ? const PreferredSize(
-                        preferredSize: Size.fromHeight(3),
-                        child: LinearProgressIndicator(minHeight: 3),
+                        preferredSize: Size.fromHeight(2),
+                        child: LinearProgressIndicator(minHeight: 2),
                       )
                     : null,
               ),
               body: Row(
                 children: [
-                  if (rail)
+                  if (rail) ...[
                     NavigationRail(
                       extended: extended,
                       selectedIndex: _selectedIndex,
                       minWidth: 76,
-                      minExtendedWidth: 232,
-                      groupAlignment: -0.72,
+                      minExtendedWidth: 220,
+                      groupAlignment: -1,
                       onDestinationSelected: (value) =>
                           setState(() => _selectedIndex = value),
                       destinations: [
@@ -471,6 +460,8 @@ class _ServiceLogWorkspaceState extends State<ServiceLogWorkspace>
                           ),
                       ],
                     ),
+                    const VerticalDivider(width: 1),
+                  ],
                   Expanded(
                     child: _WorkspaceContent(
                       controller: _controller,
@@ -563,8 +554,8 @@ class _WorkspaceContent extends StatelessWidget {
             margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: context.orion.warning.withValues(alpha: .12),
-              borderRadius: BorderRadius.circular(12),
+              color: context.orion.warning.withValues(alpha: .08),
+              borderRadius: BorderRadius.circular(OrionTheme.radius),
               border: Border.all(
                 color: context.orion.warning.withValues(alpha: .55),
               ),
@@ -583,9 +574,11 @@ class _WorkspaceContent extends StatelessWidget {
             margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: context.orion.danger.withValues(alpha: .12),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: context.orion.danger),
+              color: context.orion.danger.withValues(alpha: .08),
+              borderRadius: BorderRadius.circular(OrionTheme.radius),
+              border: Border.all(
+                color: context.orion.danger.withValues(alpha: .55),
+              ),
             ),
             child: Row(
               children: [

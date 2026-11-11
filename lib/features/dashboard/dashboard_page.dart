@@ -4,7 +4,7 @@ import 'package:intl/intl.dart';
 import '../../core/theme/orion_theme.dart';
 import '../../data/models/dashboard_snapshot.dart';
 import '../../data/models/service_case.dart';
-import '../../shared/widgets/empty_state.dart';
+import '../../shared/widgets/record_list.dart';
 import '../../shared/widgets/section_header.dart';
 import '../../shared/widgets/status_chip.dart';
 import '../shell/service_log_controller.dart';
@@ -24,58 +24,62 @@ class DashboardPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final snapshot = controller.dashboard;
-    final recentCases = controller.cases.take(5).toList();
+    final open = controller.cases.where((item) => !item.isResolved).take(6);
+    final closed = controller.cases.where((item) => item.isResolved).take(5);
+
     return ListView(
       key: const PageStorageKey('dashboard-scroll'),
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
       children: [
         SectionHeader(
-          title: 'Visão operacional',
-          subtitle:
-              'Equipamentos, atendimentos ativos e conhecimento técnico consolidado.',
+          title: 'Visão geral',
           action: Wrap(
-            spacing: 10,
-            runSpacing: 10,
+            spacing: 8,
+            runSpacing: 8,
             children: [
               OutlinedButton.icon(
                 onPressed: onOpenAssistant,
-                icon: const Icon(Icons.auto_awesome_rounded),
-                label: const Text('Consultar assistente'),
+                icon: const Icon(Icons.manage_search, size: 18),
+                label: const Text('Buscar no histórico'),
               ),
               FilledButton.icon(
                 onPressed: onOpenCases,
-                icon: const Icon(Icons.add_task_rounded),
+                icon: const Icon(Icons.add, size: 18),
                 label: const Text('Novo atendimento'),
               ),
             ],
           ),
         ),
-        const SizedBox(height: 22),
-        _MetricGrid(snapshot: snapshot),
-        const SizedBox(height: 24),
+        const SizedBox(height: 18),
+        _Metrics(snapshot: snapshot),
+        const SizedBox(height: 28),
         LayoutBuilder(
           builder: (context, constraints) {
-            final wide = constraints.maxWidth >= 940;
-            final recent = _RecentCases(
-              cases: recentCases,
-              onOpenCases: onOpenCases,
+            final openList = _CaseGroup(
+              title: 'Em aberto',
+              cases: open.toList(),
+              emptyText: 'Nenhum atendimento em aberto.',
+              onMore: onOpenCases,
             );
-            final health = _OperationalPanel(
-              snapshot: snapshot,
-              totalCases: controller.cases.length,
+            final closedList = _CaseGroup(
+              title: 'Concluídos recentemente',
+              cases: closed.toList(),
+              emptyText: 'Nenhum atendimento concluído ainda.',
+              onMore: onOpenCases,
             );
-            if (!wide) {
+            if (constraints.maxWidth < 980) {
               return Column(
-                children: [recent, const SizedBox(height: 18), health],
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [openList, const SizedBox(height: 28), closedList],
               );
             }
             return Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(flex: 7, child: recent),
-                const SizedBox(width: 18),
-                Expanded(flex: 3, child: health),
+                Expanded(child: openList),
+                const SizedBox(width: 24),
+                Expanded(child: closedList),
               ],
             );
           },
@@ -85,72 +89,104 @@ class DashboardPage extends StatelessWidget {
   }
 }
 
-class _MetricGrid extends StatelessWidget {
-  const _MetricGrid({required this.snapshot});
+/// Os números do período numa faixa só.
+class _Metrics extends StatelessWidget {
+  const _Metrics({required this.snapshot});
   final DashboardSnapshot snapshot;
 
   @override
   Widget build(BuildContext context) {
     final items = [
-      _MetricData(
-        icon: Icons.precision_manufacturing_rounded,
-        label: 'Equipamentos',
-        value: '${snapshot.totalEquipment}',
-        detail: '${snapshot.stoppedEquipment} parados',
-        accent: context.orion.accent,
+      (
+        'Equipamentos',
+        '${snapshot.totalEquipment}',
+        snapshot.stoppedEquipment == 0
+            ? 'nenhum parado'
+            : '${snapshot.stoppedEquipment} parado'
+                  '${snapshot.stoppedEquipment == 1 ? '' : 's'}',
       ),
-      _MetricData(
-        icon: Icons.build_circle_outlined,
-        label: 'Atendimentos ativos',
-        value: '${snapshot.openCases}',
-        detail: '${snapshot.resolvedCases} resolvidos',
-        accent: context.orion.warning,
+      (
+        'Em aberto',
+        '${snapshot.openCases}',
+        '${snapshot.resolvedCases} concluídos',
       ),
-      _MetricData(
-        icon: Icons.timer_outlined,
-        label: 'Tempo médio técnico',
-        value: _duration(snapshot.averageServiceMinutes.round()),
-        detail: 'Casos resolvidos',
-        accent: context.orion.emphasis,
+      (
+        'Tempo técnico médio',
+        _duration(snapshot.averageServiceMinutes.round()),
+        'por atendimento concluído',
       ),
-      _MetricData(
-        icon: Icons.power_settings_new_rounded,
-        label: 'Indisponibilidade',
-        value: _duration(snapshot.totalDowntimeMinutes),
-        detail: _coverage(snapshot, 'Acumulada nos casos apurados'),
-        accent: context.orion.danger,
+      (
+        'Indisponibilidade',
+        _duration(snapshot.totalDowntimeMinutes),
+        _coverage(snapshot, 'somada nos concluídos'),
       ),
-      _MetricData(
-        icon: Icons.balance_rounded,
-        label: 'Parada por hora de solução',
-        value: _ratio(snapshot.downtimeToServiceRatio),
-        detail: snapshot.downtimeToServiceRatio == null
-            ? 'Base ainda insuficiente'
-            : _coverage(snapshot, 'Indisponível ÷ tempo técnico'),
-        accent: context.orion.warning,
+      (
+        'Parada ÷ tempo técnico',
+        _ratio(snapshot.downtimeToServiceRatio),
+        snapshot.downtimeToServiceRatio == null
+            ? 'ainda sem base'
+            : _coverage(snapshot, 'horas paradas por hora de trabalho'),
       ),
     ];
 
+    final palette = context.orion;
     return LayoutBuilder(
       builder: (context, constraints) {
-        final columns = constraints.maxWidth >= 1400
+        final columns = constraints.maxWidth >= 1000
             ? 5
-            : constraints.maxWidth >= 1100
+            : constraints.maxWidth >= 600
             ? 3
-            : constraints.maxWidth >= 620
-            ? 2
-            : 1;
-        final width = (constraints.maxWidth - (columns - 1) * 14) / columns;
-        return Wrap(
-          spacing: 14,
-          runSpacing: 14,
-          children: [
-            for (final item in items)
-              SizedBox(
-                width: width,
-                child: _MetricCard(data: item),
-              ),
-          ],
+            : 2;
+        final width = constraints.maxWidth / columns;
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            color: palette.surface,
+            border: Border.all(color: palette.border),
+            borderRadius: BorderRadius.circular(OrionTheme.radiusLarge),
+          ),
+          child: Wrap(
+            children: [
+              for (final (index, (label, value, detail)) in items.indexed)
+                Container(
+                  width: width,
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      left: index % columns == 0
+                          ? BorderSide.none
+                          : BorderSide(color: palette.border),
+                      top: index < columns
+                          ? BorderSide.none
+                          : BorderSide(color: palette.border),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        style: TextStyle(
+                          color: palette.textMuted,
+                          fontSize: 13,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        value,
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w600,
+                          color: palette.emphasis,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      MetaText(detail, maxLines: 2),
+                    ],
+                  ),
+                ),
+            ],
+          ),
         );
       },
     );
@@ -160,12 +196,13 @@ class _MetricGrid extends StatelessWidget {
     if (minutes <= 0) return '0 min';
     final hours = minutes ~/ 60;
     final remainder = minutes % 60;
-    return hours == 0 ? '$minutes min' : '${hours}h ${remainder}min';
+    if (hours == 0) return '$minutes min';
+    return '${hours}h ${remainder.toString().padLeft(2, '0')}';
   }
 
   static String _ratio(double? value) {
     if (value == null) return '—';
-    return '${value.toStringAsFixed(1)}×';
+    return '${value.toStringAsFixed(1).replaceAll('.', ',')}×';
   }
 
   /// Avisa quando parte dos atendimentos resolvidos ainda não teve a
@@ -181,252 +218,96 @@ class _MetricGrid extends StatelessWidget {
   }
 }
 
-class _MetricData {
-  const _MetricData({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.detail,
-    required this.accent,
+class _CaseGroup extends StatelessWidget {
+  const _CaseGroup({
+    required this.title,
+    required this.cases,
+    required this.emptyText,
+    required this.onMore,
   });
-  final IconData icon;
-  final String label;
-  final String value;
-  final String detail;
-  final Color accent;
-}
 
-class _MetricCard extends StatelessWidget {
-  const _MetricCard({required this.data});
-  final _MetricData data;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Row(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: data.accent.withValues(alpha: .10),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Icon(data.icon, color: data.accent),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    data.label,
-                    style: TextStyle(color: context.orion.textMuted),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    data.value,
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  Text(
-                    data.detail,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: context.orion.textMuted,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _RecentCases extends StatelessWidget {
-  const _RecentCases({required this.cases, required this.onOpenCases});
+  final String title;
   final List<ServiceCase> cases;
-  final VoidCallback onOpenCases;
+  final String emptyText;
+  final VoidCallback onMore;
+
+  static final _date = DateFormat('dd/MM');
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Atendimentos recentes',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-                TextButton(
-                  onPressed: onOpenCases,
-                  child: const Text('Ver todos'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            if (cases.isEmpty)
-              const EmptyState(
-                icon: Icons.assignment_outlined,
-                title: 'Nenhum atendimento',
-                message: 'Os atendimentos registrados aparecerão aqui.',
-              )
-            else
-              ...cases.map((item) => _RecentCaseRow(item: item)),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _RecentCaseRow extends StatelessWidget {
-  const _RecentCaseRow({required this.item});
-  final ServiceCase item;
-
-  @override
-  Widget build(BuildContext context) {
-    final date = DateFormat('dd/MM/yyyy HH:mm').format(item.openedAt);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 11),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          CircleAvatar(
-            backgroundColor: context.orion.accentSoft,
-            foregroundColor: context.orion.accent,
-            child: Text('#${item.caseNumber}'),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item.reportedFailure,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '${item.equipmentLabel} · $date',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: context.orion.textMuted,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          StatusChip(value: item.status, compact: true),
-        ],
-      ),
-    );
-  }
-}
-
-class _OperationalPanel extends StatelessWidget {
-  const _OperationalPanel({required this.snapshot, required this.totalCases});
-  final DashboardSnapshot snapshot;
-  final int totalCases;
-
-  @override
-  Widget build(BuildContext context) {
-    final resolutionRate = totalCases == 0
-        ? 0.0
-        : snapshot.resolvedCases / totalCases;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'Qualidade da base',
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 18),
-            _ProgressLine(
-              label: 'Casos encerrados',
-              value: resolutionRate,
-              caption: '${(resolutionRate * 100).round()}%',
-            ),
-            const SizedBox(height: 18),
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: context.orion.accentSoft,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    Icons.verified_user_outlined,
-                    color: context.orion.accent,
-                  ),
-                  SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Priorize causa-raiz, validação final e nível de confiança. Esses campos aumentam a utilidade da busca futura.',
-                      style: TextStyle(height: 1.4),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ProgressLine extends StatelessWidget {
-  const _ProgressLine({
-    required this.label,
-    required this.value,
-    required this.caption,
-  });
-  final String label;
-  final double value;
-  final String caption;
-
-  @override
-  Widget build(BuildContext context) {
+    final palette = context.orion;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
           children: [
-            Expanded(child: Text(label)),
-            Text(caption, style: const TextStyle(fontWeight: FontWeight.w800)),
+            Expanded(
+              child: Text(
+                title,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            TextButton(onPressed: onMore, child: const Text('Ver todos')),
           ],
         ),
-        const SizedBox(height: 8),
-        LinearProgressIndicator(
-          value: value,
-          minHeight: 9,
-          borderRadius: BorderRadius.circular(99),
+        const SizedBox(height: 4),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: palette.surface,
+            border: Border.all(color: palette.border),
+            borderRadius: BorderRadius.circular(OrionTheme.radiusLarge),
+          ),
+          child: cases.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: MetaText(emptyText),
+                )
+              : Column(
+                  children: [
+                    for (final (index, item) in cases.indexed) ...[
+                      if (index > 0) const Divider(height: 1),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 10,
+                        ),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 44,
+                              child: Text(
+                                '${item.caseNumber}',
+                                style: TextStyle(color: palette.textMuted),
+                              ),
+                            ),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    item.reportedFailure,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  MetaText(
+                                    '${item.equipmentLabel} · '
+                                    '${_date.format(item.openedAt)}',
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            StatusChip(value: item.status, compact: true),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
         ),
       ],
     );

@@ -72,7 +72,7 @@ class OrionBrand extends StatelessWidget {
     final content = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        ClipRRect(borderRadius: BorderRadius.circular(8), child: logo),
+        logo,
         if (showDetails) ...[
           const SizedBox(width: 10),
           Container(width: 1, height: height * .7, color: context.orion.border),
@@ -88,7 +88,7 @@ class OrionBrand extends StatelessWidget {
                   color: textColor,
                   fontSize: 15,
                   height: 1.05,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
               Text(

@@ -101,7 +101,7 @@ class _OrionErrorWidget extends StatelessWidget {
                         style: TextStyle(
                           color: OrionColors.navy,
                           fontSize: 18,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],

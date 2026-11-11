@@ -4,6 +4,7 @@ import '../../core/theme/orion_theme.dart';
 import '../../data/models/equipment.dart';
 import '../../shared/widgets/archive_confirmation.dart';
 import '../../shared/widgets/empty_state.dart';
+import '../../shared/widgets/record_list.dart';
 import '../../shared/widgets/responsive_dialog.dart';
 import '../../shared/widgets/section_header.dart';
 import '../equipment/equipment_form.dart';
@@ -91,197 +92,126 @@ class _CustomersPageState extends State<CustomersPage> {
 
   @override
   Widget build(BuildContext context) {
-    final normalizedQuery = _query.trim().toLowerCase();
-    final customers = widget.controller.catalog.customers.where((customer) {
-      if (normalizedQuery.isEmpty) return true;
-      final sites = widget.controller.catalog.sites
-          .where((site) => site.customerId == customer.id)
-          .map((site) => '${site.site} ${site.city ?? ''} ${site.state ?? ''}')
-          .join(' ');
-      final haystack = [
-        customer.name,
-        customer.taxId,
-        customer.contactName,
-        customer.email,
-        customer.phone,
-        customer.addressLine,
-        customer.city,
-        customer.state,
-        customer.notes,
-        sites,
-      ].whereType<String>().join(' ').toLowerCase();
-      return haystack.contains(normalizedQuery);
-    }).toList();
+    final catalog = widget.controller.catalog;
+    final sitesByCustomer = <String, List<SiteOption>>{};
+    for (final site in catalog.sites) {
+      (sitesByCustomer[site.customerId] ??= []).add(site);
+    }
+    // Pelo local, e não pelo nome do cliente: dois clientes com o mesmo
+    // nome, ou um renomeado ainda não sincronizado, somavam errado.
+    final customerOfSite = {
+      for (final site in catalog.sites) site.id: site.customerId,
+    };
+    final equipmentByCustomer = <String, int>{};
+    for (final item in widget.controller.equipment) {
+      final customerId = customerOfSite[item.siteId];
+      if (customerId == null) continue;
+      equipmentByCustomer[customerId] =
+          (equipmentByCustomer[customerId] ?? 0) + 1;
+    }
 
-    return RefreshIndicator(
+    final query = _query.trim().toLowerCase();
+    final customers = catalog.customers
+        .where((customer) {
+          if (query.isEmpty) return true;
+          final haystack = [
+            customer.name,
+            customer.taxId,
+            customer.contactName,
+            customer.email,
+            customer.phone,
+            customer.addressLine,
+            customer.city,
+            customer.state,
+            customer.notes,
+            for (final site in sitesByCustomer[customer.id] ?? const [])
+              '${site.site} ${site.city ?? ''} ${site.state ?? ''}',
+          ].whereType<String>().join(' ').toLowerCase();
+          return haystack.contains(query);
+        })
+        .toList(growable: false);
+
+    return RecordList(
       onRefresh: widget.controller.load,
-      child: ListView(
-        padding: const EdgeInsets.all(24),
-        children: [
-          SectionHeader(
-            title: 'Clientes',
-            subtitle:
-                'Cadastro rápido de hospitais, clínicas, contatos e locais de instalação.',
-            action: Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                OutlinedButton.icon(
-                  onPressed: () => _newSite(),
-                  icon: const Icon(Icons.add_location_alt_outlined),
-                  label: const Text('Novo local'),
-                ),
-                FilledButton.icon(
-                  onPressed: _newCustomer,
-                  icon: const Icon(Icons.person_add_alt_1_rounded),
-                  label: const Text('Novo cliente'),
-                ),
-              ],
-            ),
+      header: [
+        SectionHeader(
+          title: 'Clientes',
+          subtitle: catalog.customers.isEmpty
+              ? null
+              : '${catalog.customers.length} clientes · '
+                    '${catalog.sites.length} locais',
+          action: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton(
+                onPressed: () => _newSite(),
+                child: const Text('Novo local'),
+              ),
+              FilledButton.icon(
+                onPressed: _newCustomer,
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Novo cliente'),
+              ),
+            ],
           ),
-          const SizedBox(height: 20),
-          const _ServiceOrderDataCard(),
-          const SizedBox(height: 18),
-          TextField(
-            controller: _search,
-            onChanged: (value) => setState(() => _query = value),
-            decoration: InputDecoration(
-              hintText: 'Pesquisar por cliente, contato, cidade ou local...',
-              prefixIcon: const Icon(Icons.search_rounded),
-              suffixIcon: _query.isEmpty
-                  ? null
-                  : IconButton(
-                      onPressed: () {
-                        _search.clear();
-                        setState(() => _query = '');
-                      },
-                      icon: const Icon(Icons.clear_rounded),
-                    ),
-            ),
-          ),
-          const SizedBox(height: 18),
-          if (customers.isEmpty)
-            EmptyState(
-              icon: Icons.apartment_rounded,
-              title: normalizedQuery.isEmpty
-                  ? 'Nenhum cliente cadastrado'
-                  : 'Nenhum cliente encontrado',
-              message: normalizedQuery.isEmpty
-                  ? 'Cadastre apenas o nome agora. Os demais dados podem ser preenchidos quando estiverem disponíveis.'
-                  : 'Revise os termos da pesquisa.',
-              action: normalizedQuery.isEmpty
-                  ? FilledButton.icon(
-                      onPressed: _newCustomer,
-                      icon: const Icon(Icons.add_rounded),
-                      label: const Text('Cadastrar cliente'),
-                    )
-                  : null,
-            )
-          else
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final columns = constraints.maxWidth >= 1160
-                    ? 3
-                    : constraints.maxWidth >= 720
-                    ? 2
-                    : 1;
-                final width =
-                    (constraints.maxWidth - (columns - 1) * 14) / columns;
-                return Wrap(
-                  spacing: 14,
-                  runSpacing: 14,
-                  children: [
-                    for (final customer in customers)
-                      SizedBox(
-                        width: width,
-                        child: _CustomerCard(
-                          customer: customer,
-                          sites: widget.controller.catalog.sites
-                              .where((site) => site.customerId == customer.id)
-                              .toList(),
-                          equipmentCount: widget.controller.equipment
-                              .where((item) => item.customer == customer.name)
-                              .length,
-                          onAddSite: () => _newSite(customer.id),
-                          onEditCustomer: () => _editCustomer(customer),
-                          onArchiveCustomer: () => _archiveCustomer(customer),
-                          onEditSite: _editSite,
-                        ),
-                      ),
-                  ],
-                );
-              },
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Lembra para que servem os dados opcionais do cliente: eles saem no
-/// cabeçalho da ordem de serviço.
-class _ServiceOrderDataCard extends StatelessWidget {
-  const _ServiceOrderDataCard();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: context.orion.accentSoft,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: context.orion.accentBright.withValues(alpha: 0.32),
         ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: context.orion.surface,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              Icons.description_outlined,
-              color: context.orion.accent,
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Dados que saem na ordem de serviço',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: context.orion.emphasis,
+        const SizedBox(height: 16),
+        TextField(
+          controller: _search,
+          onChanged: (value) => setState(() => _query = value),
+          decoration: InputDecoration(
+            hintText: 'Buscar por cliente, contato, cidade ou local…',
+            prefixIcon: const Icon(Icons.search, size: 20),
+            suffixIcon: _query.isEmpty
+                ? null
+                : IconButton(
+                    tooltip: 'Limpar busca',
+                    onPressed: () {
+                      _search.clear();
+                      setState(() => _query = '');
+                    },
+                    icon: const Icon(Icons.close, size: 18),
                   ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'CNPJ/CPF, contato, telefone, e-mail e endereço preenchem o '
-                  'cabeçalho da OS. Para emitir, use o ícone de PDF no cartão '
-                  'do atendimento, em Atendimentos.',
-                  style: TextStyle(
-                    color: context.orion.textMuted,
-                    height: 1.45,
-                  ),
-                ),
-              ],
-            ),
           ),
-        ],
+        ),
+        const SizedBox(height: 12),
+      ],
+      itemCount: customers.length,
+      empty: EmptyState(
+        icon: Icons.apartment_outlined,
+        title: query.isEmpty
+            ? 'Nenhum cliente cadastrado'
+            : 'Nada encontrado para "$_query"',
+        message: query.isEmpty
+            ? 'Basta o nome para começar. Contato, CNPJ e endereço saem no '
+                  'cabeçalho da OS e podem ser preenchidos depois.'
+            : 'Tente outro termo.',
+        action: query.isEmpty
+            ? FilledButton(
+                onPressed: _newCustomer,
+                child: const Text('Cadastrar cliente'),
+              )
+            : null,
       ),
+      itemBuilder: (context, index) {
+        final customer = customers[index];
+        return _CustomerRow(
+          customer: customer,
+          sites: sitesByCustomer[customer.id] ?? const [],
+          equipmentCount: equipmentByCustomer[customer.id] ?? 0,
+          onAddSite: () => _newSite(customer.id),
+          onEditCustomer: () => _editCustomer(customer),
+          onArchiveCustomer: () => _archiveCustomer(customer),
+          onEditSite: _editSite,
+        );
+      },
     );
   }
 }
 
-class _CustomerCard extends StatelessWidget {
-  const _CustomerCard({
+class _CustomerRow extends StatelessWidget {
+  const _CustomerRow({
     required this.customer,
     required this.sites,
     required this.equipmentCount,
@@ -301,162 +231,91 @@ class _CustomerCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final contactLines = <Widget>[
-      if (customer.taxId?.isNotEmpty == true)
-        _InfoLine(
-          icon: Icons.badge_outlined,
-          text: 'CNPJ / ID: ${customer.taxId}',
-        ),
-      if (customer.contactName?.isNotEmpty == true)
-        _InfoLine(
-          icon: Icons.person_outline_rounded,
-          text: customer.contactName!,
-        ),
-      if (customer.phone?.isNotEmpty == true)
-        _InfoLine(icon: Icons.phone_outlined, text: customer.phone!),
-      if (customer.email?.isNotEmpty == true)
-        _InfoLine(icon: Icons.email_outlined, text: customer.email!),
-      if (customer.addressLine?.isNotEmpty == true)
-        _InfoLine(icon: Icons.home_work_outlined, text: customer.addressLine!),
-      if (customer.locationLabel.isNotEmpty)
-        _InfoLine(
-          icon: Icons.location_city_outlined,
-          text: customer.locationLabel,
-        ),
-    ];
+    final palette = context.orion;
+    final details = [
+      if (customer.locationLabel.isNotEmpty) customer.locationLabel,
+      if (customer.contactName?.trim().isNotEmpty == true)
+        customer.contactName!.trim(),
+      if (customer.phone?.trim().isNotEmpty == true) customer.phone!.trim(),
+      equipmentCount == 1 ? '1 equipamento' : '$equipmentCount equipamentos',
+    ].join(' · ');
 
-    return Card(
+    return InkWell(
+      onTap: onEditCustomer,
       child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
+        padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+        child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: context.orion.accentSoft,
-                    borderRadius: BorderRadius.circular(12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    customer.name,
+                    style: const TextStyle(fontWeight: FontWeight.w500),
                   ),
-                  child: Icon(
-                    Icons.apartment_rounded,
-                    color: context.orion.accent,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  const SizedBox(height: 3),
+                  MetaText(details, maxLines: 2),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 4,
+                    runSpacing: 0,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       Text(
-                        customer.name,
-                        style: const TextStyle(fontWeight: FontWeight.w800),
+                        sites.isEmpty ? 'Sem locais' : 'Locais:',
+                        style: TextStyle(
+                          color: palette.textMuted,
+                          fontSize: 13,
+                        ),
                       ),
-                      Text(
-                        sites.length == 1
-                            ? '$equipmentCount equipamento${equipmentCount == 1 ? '' : 's'} · 1 local'
-                            : '$equipmentCount equipamento${equipmentCount == 1 ? '' : 's'} · ${sites.length} locais',
-                        style: TextStyle(color: context.orion.textMuted),
+                      for (final site in sites)
+                        TextButton(
+                          onPressed: () => onEditSite(site),
+                          style: TextButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(horizontal: 6),
+                            minimumSize: const Size(0, 28),
+                            textStyle: Theme.of(
+                              context,
+                            ).textTheme.bodyMedium?.copyWith(fontSize: 13),
+                          ),
+                          child: Text(site.site),
+                        ),
+                      TextButton.icon(
+                        onPressed: onAddSite,
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                          minimumSize: const Size(0, 28),
+                          foregroundColor: palette.textMuted,
+                          textStyle: Theme.of(
+                            context,
+                          ).textTheme.bodyMedium?.copyWith(fontSize: 13),
+                        ),
+                        icon: const Icon(Icons.add, size: 16),
+                        label: const Text('Adicionar local'),
                       ),
                     ],
                   ),
-                ),
-                IconButton(
-                  tooltip: 'Editar cliente',
-                  onPressed: onEditCustomer,
-                  icon: const Icon(Icons.edit_outlined),
-                ),
-                IconButton(
-                  tooltip: 'Arquivar cliente',
-                  onPressed: onArchiveCustomer,
-                  icon: const Icon(Icons.inventory_2_outlined),
-                ),
-              ],
-            ),
-            if (contactLines.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              ...contactLines,
-            ],
-            const SizedBox(height: 14),
-            Text(
-              'Locais de instalação',
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                fontWeight: FontWeight.w800,
-                color: context.orion.emphasis,
-              ),
-            ),
-            const SizedBox(height: 8),
-            if (sites.isEmpty)
-              Text(
-                'Nenhum local cadastrado.',
-                style: TextStyle(color: context.orion.textMuted),
-              )
-            else
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final site in sites)
-                    Tooltip(
-                      message: site.locationLabel.isEmpty
-                          ? 'Editar ${site.site}'
-                          : 'Editar ${site.site} · ${site.locationLabel}',
-                      child: ActionChip(
-                        avatar: const Icon(
-                          Icons.location_on_outlined,
-                          size: 17,
-                        ),
-                        label: Text(site.site),
-                        onPressed: () => onEditSite(site),
-                      ),
-                    ),
                 ],
               ),
-            if (customer.notes?.isNotEmpty == true) ...[
-              const SizedBox(height: 12),
-              Text(
-                customer.notes!,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: context.orion.textMuted, height: 1.4),
-              ),
-            ],
-            const SizedBox(height: 10),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: onAddSite,
-                icon: const Icon(Icons.add_location_alt_outlined),
-                label: const Text('Adicionar local'),
-              ),
+            ),
+            IconButton(
+              tooltip: 'Editar cliente',
+              onPressed: onEditCustomer,
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.edit_outlined, size: 19),
+            ),
+            IconButton(
+              tooltip: 'Arquivar cliente',
+              onPressed: onArchiveCustomer,
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.inventory_2_outlined, size: 19),
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _InfoLine extends StatelessWidget {
-  const _InfoLine({required this.icon, required this.text});
-
-  final IconData icon;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 7),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 17, color: context.orion.textMuted),
-          const SizedBox(width: 8),
-          Expanded(child: Text(text, style: const TextStyle(fontSize: 13))),
-        ],
       ),
     );
   }

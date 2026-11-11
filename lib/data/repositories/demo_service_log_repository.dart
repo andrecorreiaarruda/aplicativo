@@ -516,8 +516,10 @@ class DemoServiceLogRepository
 
   Future<String> _createSite(SiteDraft draft) async {
     await _ensureHydrated();
-    final customer = _customers.firstWhere(
+    final customer = _require(
+      _customers,
       (item) => item.id == draft.customerId,
+      'O cliente deste local não existe mais. Atualize a tela e tente de novo.',
     );
     final siteName = draft.siteName.trim();
     final existing = _sites.where(
@@ -555,8 +557,10 @@ class DemoServiceLogRepository
     await _ensureHydrated();
     final index = _sites.indexWhere((item) => item.id == id);
     if (index < 0) throw StateError('Local não encontrado.');
-    final customer = _customers.firstWhere(
+    final customer = _require(
+      _customers,
       (item) => item.id == draft.customerId,
+      'O cliente deste local não existe mais. Atualize a tela e tente de novo.',
     );
     final siteName = draft.siteName.trim();
     final duplicate = _sites.any(
@@ -665,7 +669,11 @@ class DemoServiceLogRepository
       );
     }
 
-    final model = _models.firstWhere((item) => item.id == draft.modelId);
+    final model = _require(
+      _models,
+      (item) => item.id == draft.modelId,
+      'O modelo escolhido não existe mais. Escolha outro e tente de novo.',
+    );
     final matchingSites = _sites.where((item) => item.id == draft.siteId);
     final site = matchingSites.isEmpty ? null : matchingSites.first;
     final id = _nextId('eq');
@@ -727,7 +735,11 @@ class DemoServiceLogRepository
       );
     }
 
-    final model = _models.firstWhere((item) => item.id == draft.modelId);
+    final model = _require(
+      _models,
+      (item) => item.id == draft.modelId,
+      'O modelo escolhido não existe mais. Escolha outro e tente de novo.',
+    );
     final matchingSites = _sites.where((item) => item.id == draft.siteId);
     final site = matchingSites.isEmpty ? null : matchingSites.first;
 
@@ -1166,8 +1178,11 @@ class DemoServiceLogRepository
 
   Future<void> _saveCase(ServiceCaseDraft draft) async {
     await _ensureHydrated();
-    final equipment = _equipment.firstWhere(
+    final equipment = _require(
+      _equipment,
       (item) => item.id == draft.equipmentId,
+      'O equipamento deste atendimento não existe mais — pode ter sido '
+      'arquivado em outro computador. Atualize a tela e tente de novo.',
     );
     final existingIndex = draft.id == null
         ? -1
@@ -1933,6 +1948,21 @@ class DemoServiceLogRepository
   static String _fallback(String? value, String fallback) {
     final cleaned = value?.trim();
     return cleaned == null || cleaned.isEmpty ? fallback : cleaned;
+  }
+
+  /// Primeiro item que atende a [test], ou [StateError] com [message].
+  ///
+  /// Substitui `firstWhere` nas gravações: sem item, ele lança "No
+  /// element", e era essa a frase que aparecia na tela.
+  static T _require<T>(
+    Iterable<T> items,
+    bool Function(T item) test,
+    String message,
+  ) {
+    for (final item in items) {
+      if (test(item)) return item;
+    }
+    throw StateError(message);
   }
 
   static String? _blankToNull(String? value) {

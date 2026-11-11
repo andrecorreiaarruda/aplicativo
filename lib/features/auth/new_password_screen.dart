@@ -90,7 +90,7 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
                   Text(
                     'Defina a senha nova',
                     style: theme.textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -143,7 +143,7 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         color: context.orion.danger.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
                         _error!,
