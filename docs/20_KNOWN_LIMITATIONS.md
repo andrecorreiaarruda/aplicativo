@@ -66,7 +66,7 @@
     (nome, ícone, instalador, uma janela só) e aguarda a primeira
     validação — roteiro em `60_WINDOWS.md`. macOS, Android, iOS e web
     compilam em tese.
-18. **No Linux, nada impede abrir o aplicativo duas vezes.** As duas
-    janelas gravam a mesma base local, e a que gravar por último
-    sobrescreve a outra. No Windows a segunda abertura só traz a
-    primeira para a frente.
+18. **Uma janela por usuário.** Abrir o aplicativo de novo traz a janela
+    existente para a frente, no Linux e no Windows: duas gravariam a
+    mesma base local uma por cima da outra. Por isso `flutter run` não
+    abre enquanto o aplicativo instalado estiver aberto.

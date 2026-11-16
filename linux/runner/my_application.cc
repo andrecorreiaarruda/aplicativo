@@ -22,6 +22,22 @@ static void first_frame_cb(MyApplication* self, FlView* view) {
 // Implements GApplication::activate.
 static void my_application_activate(GApplication* application) {
   MyApplication* self = MY_APPLICATION(application);
+
+  // Uma janela so. Quando o aplicativo e aberto de novo, o GTK entrega a
+  // ativacao a este processo, que ja esta rodando, em vez de iniciar outro.
+  // Basta mostrar a janela que existe: uma segunda carregaria a mesma base
+  // local na memoria e as duas gravariam uma por cima da outra.
+  GList* windows = gtk_application_get_windows(GTK_APPLICATION(application));
+  if (windows != nullptr) {
+    GtkWindow* existing = GTK_WINDOW(windows->data);
+    // Ainda invisivel significa que o primeiro quadro nao foi desenhado;
+    // first_frame_cb mostra a janela quando ele chegar.
+    if (gtk_widget_get_visible(GTK_WIDGET(existing))) {
+      gtk_window_present(existing);
+    }
+    return;
+  }
+
   GtkWindow* window =
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
 
@@ -45,11 +61,11 @@ static void my_application_activate(GApplication* application) {
   if (use_header_bar) {
     GtkHeaderBar* header_bar = GTK_HEADER_BAR(gtk_header_bar_new());
     gtk_widget_show(GTK_WIDGET(header_bar));
-    gtk_header_bar_set_title(header_bar, "servicelog_ai");
+    gtk_header_bar_set_title(header_bar, "ORION ServiceLog");
     gtk_header_bar_set_show_close_button(header_bar, TRUE);
     gtk_window_set_titlebar(window, GTK_WIDGET(header_bar));
   } else {
-    gtk_window_set_title(window, "servicelog_ai");
+    gtk_window_set_title(window, "ORION ServiceLog");
   }
 
   gtk_window_set_default_size(window, 1280, 720);
@@ -142,7 +158,12 @@ MyApplication* my_application_new() {
   // the application to be recognized beyond its binary name.
   g_set_prgname(APPLICATION_ID);
 
+  // Sem G_APPLICATION_NON_UNIQUE, que o modelo do Flutter traz: e essa
+  // marca que deixava abrir o aplicativo duas vezes. O zero equivale a
+  // G_APPLICATION_DEFAULT_FLAGS, nome que so existe a partir da GLib 2.74;
+  // o nome antigo, G_APPLICATION_FLAGS_NONE, gera aviso nas versoes novas.
   return MY_APPLICATION(g_object_new(my_application_get_type(),
                                      "application-id", APPLICATION_ID, "flags",
-                                     G_APPLICATION_NON_UNIQUE, nullptr));
+                                     static_cast<GApplicationFlags>(0),
+                                     nullptr));
 }

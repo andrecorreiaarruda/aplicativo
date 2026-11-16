@@ -90,7 +90,7 @@ um não aparece no outro até subir.
 
 Abrir o atalho com o aplicativo já aberto traz a janela existente para a
 frente, em vez de abrir outra. Duas janelas gravariam a mesma base local
-uma por cima da outra.
+uma por cima da outra. No Linux é igual.
 
 O mesmo vale para `flutter run -d windows`: com o aplicativo instalado
 aberto, a execução de desenvolvimento não abre. Feche o instalado antes.
