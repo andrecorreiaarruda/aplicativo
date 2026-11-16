@@ -62,5 +62,11 @@
     (pgTAP).
 16. **Não houve auditoria externa de segurança.** A revisão interna está
     em `50_REVISAO_GERAL.md`.
-17. **Windows, macOS, Android, iOS e web compilam em tese**, mas só o
-    Linux é usado e testado de fato.
+17. **Só o Linux é usado e testado de fato.** O Windows está preparado
+    (nome, ícone, instalador, uma janela só) e aguarda a primeira
+    validação — roteiro em `60_WINDOWS.md`. macOS, Android, iOS e web
+    compilam em tese.
+18. **No Linux, nada impede abrir o aplicativo duas vezes.** As duas
+    janelas gravam a mesma base local, e a que gravar por último
+    sobrescreve a outra. No Windows a segunda abertura só traz a
+    primeira para a frente.

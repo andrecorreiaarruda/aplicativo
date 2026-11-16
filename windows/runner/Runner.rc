@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "br.com.orionmed" "\0"
-            VALUE "FileDescription", "servicelog_ai" "\0"
+            VALUE "CompanyName", "ORION" "\0"
+            VALUE "FileDescription", "ORION ServiceLog" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "servicelog_ai" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 br.com.orionmed. All rights reserved." "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 ORION." "\0"
             VALUE "OriginalFilename", "servicelog_ai.exe" "\0"
-            VALUE "ProductName", "servicelog_ai" "\0"
+            VALUE "ProductName", "ORION ServiceLog" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

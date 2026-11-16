@@ -48,6 +48,17 @@ baixar código novo, rode de novo.
 ./scripts/install-linux.sh --no-build    # reinstala o que já foi compilado
 ```
 
+## Instalar como aplicativo (Windows)
+
+```powershell
+.\scripts\install-windows.cmd
+```
+
+Compila, instala em `%LOCALAPPDATA%\Programs\ORION ServiceLog` e cria o
+atalho no menu Iniciar. O preparo do computador (Visual Studio, Flutter,
+modo de desenvolvedor) e o roteiro de validação estão em
+`docs/60_WINDOWS.md`.
+
 ## Configuração (`.env`)
 
 Copie `.env.example` para `.env` e preencha. O arquivo fica fora do Git.
@@ -84,7 +95,8 @@ npx supabase test db --local
 
 | O quê | Onde |
 |---|---|
-| Banco local e sessão | `~/.local/share/br.com.orionmed.servicelog_ai/` (só o dono lê) |
+| Banco local e sessão (Linux) | `~/.local/share/br.com.orionmed.servicelog_ai/` (só o dono lê) |
+| Banco local e sessão (Windows) | `%APPDATA%\ORION\ORION ServiceLog\` |
 | PDFs das OS | `Documentos/ORION ServiceLog/Ordens de serviço/` |
 | Dados compartilhados | Supabase, isolados por organização |
 
@@ -95,4 +107,5 @@ npx supabase test db --local
 - `docs/30_BACKEND_AUTHORIZATION.md` — quem pode o quê no banco
 - `docs/40_TRANSACTIONAL_OUTBOX.md` — garantias da fila local
 - `docs/50_REVISAO_GERAL.md` — revisão de segurança, falhas e desempenho
+- `docs/60_WINDOWS.md` — instalação e validação no Windows
 - `docs/historico/` — notas de versões antigas
